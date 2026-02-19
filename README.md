@@ -14,10 +14,48 @@
 ## Quickstart
 
 ```bash
-pnpm install
-pnpm build
-pnpm --filter secscan exec secscan scan . --format both --out-dir ./.secscan --fail-on high
+corepack pnpm install
+corepack pnpm build
+node ./packages/cli/dist/index.js scan . --format both --out-dir ./.secscan --fail-on high
 ```
+
+## Testing
+
+```bash
+corepack pnpm test
+```
+
+Coverage includes:
+- lockfile parsing (direct/transitive and scoped packages)
+- deterministic finding sort order
+- OSV fallback/cache behavior and severity mapping
+- evidence collection from `.ts`/`.tsx`/`.vue`
+- scan orchestration confidence/severity outcomes
+- CLI output format and exit code behavior
+
+## Demo Project
+
+There is a ready-to-scan example project at:
+
+`examples/vulnerable-demo`
+
+It pins older package versions that have known historical advisories, so it is useful for demos. Advisory severity can change over time as OSV data is updated.
+
+Run the demo scan:
+
+```bash
+corepack pnpm build
+corepack pnpm demo:scan
+```
+
+Or run directly:
+
+```bash
+node ./packages/cli/dist/index.js scan ./examples/vulnerable-demo --format both --out-dir ./examples/vulnerable-demo/.secscan --fail-on none --offline
+```
+
+The demo is deterministic in offline mode because cache fixtures are committed under:
+`examples/vulnerable-demo/.secscan/.cache/osv`
 
 ## CLI
 
@@ -66,7 +104,15 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      - run: pnpm --filter secscan exec secscan scan . --format both --out-dir ./.secscan --fail-on high
+      - run: corepack pnpm install
+      - run: corepack pnpm build
+      - run: node ./packages/cli/dist/index.js scan . --format both --out-dir ./.secscan --fail-on high
+
+## Release
+
+1. Run `corepack pnpm install`
+2. Run `corepack pnpm lint && corepack pnpm test && corepack pnpm build`
+3. Run `corepack pnpm release:dry-run`
+4. Commit release notes in `CHANGELOG.md`
+5. Tag `v0.1.0` and push tag
 ```

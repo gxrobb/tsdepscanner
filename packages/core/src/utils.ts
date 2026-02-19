@@ -25,6 +25,8 @@ export function stableSortBy<T>(items: T[], key: (item: T) => string): T[] {
 }
 
 export function shouldFail(failOn: string, findingSeverity: string): boolean {
+  if (failOn === 'none') return false;
+  if (!(failOn in SEVERITY_RANK) || !(findingSeverity in SEVERITY_RANK)) return false;
   return SEVERITY_RANK[findingSeverity] >= SEVERITY_RANK[failOn];
 }
 

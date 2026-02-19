@@ -3,3 +3,12 @@ dist
 .secscan
 coverage
 pnpm-lock.yaml
+.artifacts
+
+# Keep demo cache fixture tracked for deterministic offline scans.
+!examples/
+!examples/vulnerable-demo/
+!examples/vulnerable-demo/.secscan/
+!examples/vulnerable-demo/.secscan/.cache/
+!examples/vulnerable-demo/.secscan/.cache/osv/
+!examples/vulnerable-demo/.secscan/.cache/osv/*.json

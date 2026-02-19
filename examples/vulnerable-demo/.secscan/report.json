@@ -1,0 +1,61 @@
+{
+  "targetPath": "/Users/solinarmac/Documents/dev/depscanner/tsdepscanner/examples/vulnerable-demo",
+  "generatedAt": "2026-02-19T23:41:58.903Z",
+  "failOn": "none",
+  "summary": {
+    "dependencyCount": 2,
+    "scannedFiles": 1,
+    "findingsCount": 2,
+    "bySeverity": {
+      "critical": 0,
+      "high": 0,
+      "medium": 1,
+      "low": 1,
+      "unknown": 0
+    },
+    "byConfidence": {
+      "high": 2,
+      "medium": 0,
+      "low": 0,
+      "unknown": 0
+    }
+  },
+  "findings": [
+    {
+      "packageName": "lodash",
+      "version": "4.17.19",
+      "direct": true,
+      "severity": "medium",
+      "confidence": "high",
+      "evidence": [
+        "src/index.ts"
+      ],
+      "vulnerabilities": [
+        {
+          "id": "GHSA-35jh-r3h4-6jhm",
+          "summary": "Command injection in lodash template helper",
+          "severity": "medium"
+        }
+      ],
+      "source": "cache"
+    },
+    {
+      "packageName": "node-forge",
+      "version": "0.9.0",
+      "direct": true,
+      "severity": "low",
+      "confidence": "high",
+      "evidence": [
+        "src/index.ts"
+      ],
+      "vulnerabilities": [
+        {
+          "id": "GHSA-5rrq-pxf6-6jx5",
+          "summary": "Prototype pollution in node-forge util.setPath",
+          "severity": "low"
+        }
+      ],
+      "source": "cache"
+    }
+  ]
+}

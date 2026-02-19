@@ -1,0 +1,10 @@
+{
+  "name": "secscan-vulnerable-demo",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "lodash": "4.17.19",
+    "node-forge": "0.9.0"
+  }
+}

@@ -7,8 +7,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "lint": "eslint src --ext .ts",
-    "test": "node --test --import tsx"
+    "lint": "eslint src test --ext .ts",
+    "test": "node --test --import tsx test/**/*.test.ts"
   },
   "dependencies": {
     "@secscan/core": "workspace:*",
