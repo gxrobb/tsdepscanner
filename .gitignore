@@ -1,0 +1,5 @@
+node_modules
+dist
+.secscan
+coverage
+pnpm-lock.yaml
