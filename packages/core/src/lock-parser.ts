@@ -21,11 +21,17 @@ export async function parsePackageLock(projectPath: string): Promise<ParsedLock>
 
   if (lock.packages && lock.lockfileVersion && lock.lockfileVersion >= 2) {
     for (const [pkgPath, meta] of Object.entries(lock.packages)) {
-      if (!pkgPath || !meta.version) continue;
-      const name = pkgPath.startsWith('node_modules/') ? pkgPath.slice('node_modules/'.length) : null;
-      if (!name) continue;
-      const direct = pkgPath.split('/').length === 2;
-      map.set(`${name}@${meta.version}`, { name, version: meta.version, direct });
+      const name = getPackageNameFromPath(pkgPath);
+      if (!name || !meta.version) continue;
+
+      const direct = isDirectPackagePath(pkgPath);
+      const key = `${name}@${meta.version}`;
+      const existing = map.get(key);
+      if (!existing) {
+        map.set(key, { name, version: meta.version, direct });
+      } else if (direct && !existing.direct) {
+        map.set(key, { ...existing, direct: true });
+      }
     }
   }
 
@@ -38,6 +44,35 @@ export async function parsePackageLock(projectPath: string): Promise<ParsedLock>
   };
 }
 
+function getPackageNameFromPath(pkgPath: string): string | null {
+  if (!pkgPath.startsWith('node_modules/')) return null;
+
+  const lastNodeModules = pkgPath.lastIndexOf('node_modules/');
+  const candidate = pkgPath.slice(lastNodeModules + 'node_modules/'.length);
+  if (!candidate) return null;
+
+  const parts = candidate.split('/');
+  if (parts[0]?.startsWith('@')) {
+    if (!parts[1]) return null;
+    return `${parts[0]}/${parts[1]}`;
+  }
+
+  return parts[0] ?? null;
+}
+
+function isDirectPackagePath(pkgPath: string): boolean {
+  if (!pkgPath.startsWith('node_modules/')) return false;
+  const rel = pkgPath.slice('node_modules/'.length);
+  if (!rel) return false;
+
+  const segments = rel.split('/');
+  if (segments[0]?.startsWith('@')) {
+    return segments.length === 2;
+  }
+
+  return segments.length === 1;
+}
+
 function traverseLegacy(
   deps: Record<string, LegacyDep>,
   direct: boolean,
@@ -45,7 +80,14 @@ function traverseLegacy(
 ): void {
   for (const [name, dep] of Object.entries(deps)) {
     if (!dep.version) continue;
-    map.set(`${name}@${dep.version}`, { name, version: dep.version, direct });
+    const key = `${name}@${dep.version}`;
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, { name, version: dep.version, direct });
+    } else if (direct && !existing.direct) {
+      map.set(key, { ...existing, direct: true });
+    }
+
     if (dep.dependencies) {
       traverseLegacy(dep.dependencies, false, map);
     }

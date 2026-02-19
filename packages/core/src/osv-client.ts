@@ -4,6 +4,7 @@ import { OsvVulnerability, Severity } from './types.js';
 import { hashObject } from './utils.js';
 
 const TTL_MS = 24 * 60 * 60 * 1000;
+const FETCH_TIMEOUT_MS = 15000;
 
 interface OsvBatchResponse {
   results: Array<{ vulns?: OsvRawVuln[] }>;
@@ -50,6 +51,13 @@ export class OsvClient {
       }
     }
 
+    for (const pkg of toFetch) {
+      const key = `${pkg.name}@${pkg.version}`;
+      if (!response.has(key)) {
+        response.set(key, { source: 'unknown', vulnerabilities: [] });
+      }
+    }
+
     return response;
   }
 
@@ -58,27 +66,37 @@ export class OsvClient {
       queries: packages.map((pkg) => ({ package: { name: pkg.name, ecosystem: 'npm' }, version: pkg.version }))
     };
 
-    const res = await fetch('https://api.osv.dev/v1/querybatch', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body)
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
-    if (!res.ok) {
-      throw new Error(`OSV query failed: ${res.status}`);
-    }
+    try {
+      const res = await fetch('https://api.osv.dev/v1/querybatch', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
 
-    const json = (await res.json()) as OsvBatchResponse;
-    const map = new Map<string, OsvVulnerability[]>();
-    for (let i = 0; i < packages.length; i += 1) {
-      const pkg = packages[i];
-      const raw = json.results[i]?.vulns ?? [];
-      const vulns = raw.map(normalizeVuln);
-      const key = `${pkg.name}@${pkg.version}`;
-      map.set(key, vulns);
-      await this.writeCache(pkg, vulns);
+      if (!res.ok) {
+        throw new Error(`OSV query failed: ${res.status}`);
+      }
+
+      const json = (await res.json()) as OsvBatchResponse;
+      const map = new Map<string, OsvVulnerability[]>();
+      for (let i = 0; i < packages.length; i += 1) {
+        const pkg = packages[i];
+        const raw = json.results[i]?.vulns ?? [];
+        const vulns = raw.map(normalizeVuln);
+        const key = `${pkg.name}@${pkg.version}`;
+        map.set(key, vulns);
+        await this.writeCache(pkg, vulns);
+      }
+      return map;
+    } catch {
+      return new Map<string, OsvVulnerability[]>();
+    } finally {
+      clearTimeout(timeout);
     }
-    return map;
   }
 
   private cachePath(pkg: { name: string; version: string }): string {

@@ -21,7 +21,28 @@ test('parsePackageLock resolves direct and transitive dependencies for lockfile 
 
   assert.equal(parsed.dependencies.length, 3);
   const lodash = parsed.dependencies.find((d) => d.name === 'lodash');
-  const nested = parsed.dependencies.find((d) => d.name === 'lodash/node_modules/ansi-styles');
+  const nested = parsed.dependencies.find((d) => d.name === 'ansi-styles');
   assert.equal(lodash?.direct, true);
   assert.equal(nested?.direct, false);
+});
+
+test('parsePackageLock correctly handles scoped package paths and direct classification', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'secscan-'));
+  const lock = {
+    lockfileVersion: 2,
+    packages: {
+      '': {},
+      'node_modules/@types/node': { version: '22.10.2' },
+      'node_modules/eslint/node_modules/@types/json-schema': { version: '7.0.15' }
+    }
+  };
+
+  await writeFile(path.join(dir, 'package-lock.json'), JSON.stringify(lock));
+  const parsed = await parsePackageLock(dir);
+
+  const directScoped = parsed.dependencies.find((d) => d.name === '@types/node');
+  const nestedScoped = parsed.dependencies.find((d) => d.name === '@types/json-schema');
+
+  assert.equal(directScoped?.direct, true);
+  assert.equal(nestedScoped?.direct, false);
 });

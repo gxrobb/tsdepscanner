@@ -48,6 +48,8 @@ OSV responses are cached at:
 
 Cache TTL is 24h.
 
+When online OSV calls fail or time out, secscan continues and marks affected entries as `unknown` rather than crashing (exit code behavior still applies).
+
 ## GitHub Actions example
 
 ```yaml
