@@ -1,5 +1,6 @@
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
+import fg from 'fast-glob';
 import YAML from 'yaml';
 import { readJson } from './utils.js';
 import { DependencyNode, ParsedLock } from './types.js';
@@ -83,13 +84,10 @@ async function parsePnpmLock(projectPath: string): Promise<ParsedLock> {
   };
 
   const directNames = new Set<string>();
-  const rootImporter = lock.importers?.['.'];
-  for (const deps of [
-    rootImporter?.dependencies,
-    rootImporter?.devDependencies,
-    rootImporter?.optionalDependencies
-  ]) {
-    for (const name of Object.keys(deps ?? {})) directNames.add(name);
+  for (const importer of Object.values(lock.importers ?? {})) {
+    for (const deps of [importer.dependencies, importer.devDependencies, importer.optionalDependencies]) {
+      for (const name of Object.keys(deps ?? {})) directNames.add(name);
+    }
   }
 
   const map = new Map<string, DependencyNode>();
@@ -106,12 +104,7 @@ async function parsePnpmLock(projectPath: string): Promise<ParsedLock> {
 }
 
 async function parseYarnLock(projectPath: string): Promise<ParsedLock> {
-  const manifest = await readPackageManifest(projectPath);
-  const directNames = new Set<string>([
-    ...Object.keys(manifest.dependencies ?? {}),
-    ...Object.keys(manifest.devDependencies ?? {}),
-    ...Object.keys(manifest.optionalDependencies ?? {})
-  ]);
+  const directNames = await collectWorkspaceDirectNames(projectPath);
 
   const lockPath = path.join(projectPath, 'yarn.lock');
   const text = await readFile(lockPath, 'utf8');
@@ -148,18 +141,16 @@ async function parseYarnLock(projectPath: string): Promise<ParsedLock> {
 }
 
 async function parseBunManifest(projectPath: string): Promise<ParsedLock> {
-  const manifest = await readPackageManifest(projectPath);
+  const manifests = await readWorkspaceManifests(projectPath);
   const map = new Map<string, DependencyNode>();
 
-  for (const deps of [
-    manifest.dependencies,
-    manifest.devDependencies,
-    manifest.optionalDependencies
-  ]) {
-    for (const [name, spec] of Object.entries(deps ?? {})) {
-      const version = normalizeManifestVersion(spec);
-      const depKey = `${name}@${version}`;
-      upsertDependency(map, depKey, name, version, true);
+  for (const manifest of manifests) {
+    for (const deps of [manifest.dependencies, manifest.devDependencies, manifest.optionalDependencies]) {
+      for (const [name, spec] of Object.entries(deps ?? {})) {
+        const version = normalizeManifestVersion(spec);
+        const depKey = `${name}@${version}`;
+        upsertDependency(map, depKey, name, version, true);
+      }
     }
   }
 
@@ -170,9 +161,59 @@ async function readPackageManifest(projectPath: string): Promise<{
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
+  workspaces?: string[] | { packages?: string[] };
 }> {
   const manifestPath = path.join(projectPath, 'package.json');
   return readJson(manifestPath);
+}
+
+async function collectWorkspaceDirectNames(projectPath: string): Promise<Set<string>> {
+  const manifests = await readWorkspaceManifests(projectPath);
+  const names = new Set<string>();
+  for (const manifest of manifests) {
+    for (const deps of [manifest.dependencies, manifest.devDependencies, manifest.optionalDependencies]) {
+      for (const name of Object.keys(deps ?? {})) names.add(name);
+    }
+  }
+  return names;
+}
+
+async function readWorkspaceManifests(projectPath: string): Promise<
+  Array<{
+    dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+    optionalDependencies?: Record<string, string>;
+    workspaces?: string[] | { packages?: string[] };
+  }>
+> {
+  const root = await readPackageManifest(projectPath);
+  const workspacePatterns = getWorkspacePatterns(root);
+  if (workspacePatterns.length === 0) return [root];
+
+  const files = await fg(workspacePatterns.map((p) => `${p}/package.json`), {
+    cwd: projectPath,
+    absolute: true,
+    ignore: ['**/node_modules/**']
+  });
+
+  const manifests = await Promise.all(
+    files.map(async (file) => {
+      return readJson<{
+        dependencies?: Record<string, string>;
+        devDependencies?: Record<string, string>;
+        optionalDependencies?: Record<string, string>;
+      }>(file);
+    })
+  );
+
+  return [root, ...manifests];
+}
+
+function getWorkspacePatterns(manifest: { workspaces?: string[] | { packages?: string[] } }): string[] {
+  if (!manifest.workspaces) return [];
+  if (Array.isArray(manifest.workspaces)) return manifest.workspaces;
+  if (Array.isArray(manifest.workspaces.packages)) return manifest.workspaces.packages;
+  return [];
 }
 
 function upsertDependency(

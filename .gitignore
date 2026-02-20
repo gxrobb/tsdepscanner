@@ -1,6 +1,6 @@
 node_modules
 dist
-.secscan
+.bardcheck
 coverage
 pnpm-lock.yaml
 .artifacts
@@ -8,7 +8,7 @@ pnpm-lock.yaml
 # Keep demo cache fixture tracked for deterministic offline scans.
 !examples/
 !examples/vulnerable-demo/
-!examples/vulnerable-demo/.secscan/
-!examples/vulnerable-demo/.secscan/.cache/
-!examples/vulnerable-demo/.secscan/.cache/osv/
-!examples/vulnerable-demo/.secscan/.cache/osv/*.json
+!examples/vulnerable-demo/.bardcheck/
+!examples/vulnerable-demo/.bardcheck/.cache/
+!examples/vulnerable-demo/.bardcheck/.cache/osv/
+!examples/vulnerable-demo/.bardcheck/.cache/osv/*.json

@@ -1,10 +1,11 @@
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { OsvVulnerability, Severity, SeveritySource } from './types.js';
 import { hashObject } from './utils.js';
 
 const TTL_MS = 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 15000;
+const ENRICH_CONCURRENCY = 6;
 
 interface OsvBatchResponse {
   results: Array<{ vulns?: OsvRawVuln[] }>;
@@ -17,6 +18,12 @@ interface OsvRawVuln {
   modified?: string;
   severity?: Array<{ type: string; score: string }>;
   database_specific?: { severity?: string };
+  references?: Array<{ url?: string }>;
+  affected?: Array<{
+    ranges?: Array<{
+      events?: Array<{ fixed?: string; introduced?: string; last_affected?: string }>;
+    }>;
+  }>;
 }
 
 interface NvdResponse {
@@ -43,10 +50,15 @@ export interface OsvLookupResult {
 }
 
 export class OsvClient {
-  constructor(private readonly cacheDir: string, private readonly offline: boolean) {}
+  constructor(
+    private readonly cacheDir: string,
+    private readonly offline: boolean,
+    private readonly refreshCache: boolean = false
+  ) {}
 
   async batchQuery(packages: Array<{ name: string; version: string }>): Promise<Map<string, OsvLookupResult>> {
     await mkdir(this.cacheDir, { recursive: true });
+    await this.pruneExpiredCache(this.cacheDir);
     const response = new Map<string, OsvLookupResult>();
     const toFetch: Array<{ name: string; version: string }> = [];
 
@@ -142,6 +154,7 @@ export class OsvClient {
         const key = `${pkg.name}@${pkg.version}`;
         await this.writeCache(pkg, map.get(key) ?? []);
       }
+
       return map;
     } catch {
       return new Map<string, OsvVulnerability[]>();
@@ -155,12 +168,11 @@ export class OsvClient {
   }
 
   private async readCache(pkg: { name: string; version: string }): Promise<OsvVulnerability[] | null> {
+    if (this.refreshCache) return null;
     const filePath = this.cachePath(pkg);
     try {
       const fileStat = await stat(filePath);
-      if (Date.now() - fileStat.mtimeMs > TTL_MS) {
-        return null;
-      }
+      if (Date.now() - fileStat.mtimeMs > TTL_MS) return null;
       const data = JSON.parse(await readFile(filePath, 'utf8')) as OsvVulnerability[];
       return data.map(normalizeCachedVuln);
     } catch {
@@ -178,6 +190,7 @@ export class OsvClient {
   }
 
   private async readDetailCache(id: string): Promise<OsvRawVuln | null> {
+    if (this.refreshCache) return null;
     const filePath = this.detailCachePath(id);
     try {
       const fileStat = await stat(filePath);
@@ -202,9 +215,7 @@ export class OsvClient {
         method: 'GET',
         signal: controller.signal
       });
-      if (!res.ok) {
-        throw new Error(`OSV detail query failed: ${res.status}`);
-      }
+      if (!res.ok) throw new Error(`OSV detail query failed: ${res.status}`);
       return (await res.json()) as OsvRawVuln;
     } finally {
       clearTimeout(timeout);
@@ -216,6 +227,7 @@ export class OsvClient {
   }
 
   private async readNvdCache(cveId: string): Promise<number | null> {
+    if (this.refreshCache) return null;
     const filePath = this.nvdCachePath(cveId);
     try {
       const fileStat = await stat(filePath);
@@ -249,55 +261,6 @@ export class OsvClient {
     }
   }
 
-  private async enrichUnknownVulns(
-    unresolved: Array<{ id: string; aliases: string[] }>
-  ): Promise<Map<string, Pick<OsvVulnerability, 'severity' | 'severitySource' | 'unknownReason'>>> {
-    const resolvedEntries = await Promise.all(
-      unresolved.map(async ({ id, aliases }) => {
-        try {
-          let raw = await this.readDetailCache(id);
-          if (!raw) {
-            raw = await this.fetchVulnDetail(id);
-            await this.writeDetailCache(id, raw);
-          }
-          const mapped = mapSeverity(raw, 'osv_detail');
-          if (mapped.severity !== 'unknown') return [id, mapped] as const;
-
-          const cveAliases = (raw.aliases ?? aliases).filter((alias) => alias.startsWith('CVE-'));
-          for (const cveId of cveAliases) {
-            let score = await this.readNvdCache(cveId);
-            if (score === null) {
-              score = await this.fetchNvdCvss(cveId);
-              if (score !== null) await this.writeNvdCache(cveId, score);
-            }
-            if (score !== null) {
-              return [id, { severity: cvssToSeverity(score), severitySource: 'alias_cvss' as const }] as const;
-            }
-          }
-
-          const ghsaIds = new Set<string>();
-          if (id.startsWith('GHSA-')) ghsaIds.add(id);
-          for (const alias of raw.aliases ?? aliases) {
-            if (alias.startsWith('GHSA-')) ghsaIds.add(alias);
-          }
-          for (const ghsaId of ghsaIds) {
-            const ghsaSeverity = await this.resolveGhsaSeverity(ghsaId);
-            if (ghsaSeverity) return [id, ghsaSeverity] as const;
-          }
-
-          return [id, mapped] as const;
-        } catch {
-          return [
-            id,
-            { severity: 'unknown' as const, severitySource: 'unknown' as const, unknownReason: 'lookup_failed' as const }
-          ] as const;
-        }
-      })
-    );
-
-    return new Map(resolvedEntries);
-  }
-
   private ghsaCachePath(ghsaId: string): string {
     return path.join(this.cacheDir, 'ghsa', `${hashObject({ ghsaId })}.json`);
   }
@@ -305,6 +268,7 @@ export class OsvClient {
   private async readGhsaCache(
     ghsaId: string
   ): Promise<Pick<OsvVulnerability, 'severity' | 'severitySource'> | null> {
+    if (this.refreshCache) return null;
     const filePath = this.ghsaCachePath(ghsaId);
     try {
       const fileStat = await stat(filePath);
@@ -339,16 +303,14 @@ export class OsvClient {
         method: 'GET',
         headers: {
           Accept: 'application/vnd.github+json',
-          'User-Agent': 'secscan'
+          'User-Agent': 'bardcheck'
         },
         signal: controller.signal
       });
       if (!res.ok) return null;
       const data = (await res.json()) as GhsaResponse;
       const cvssScore = data.cvss?.score;
-      if (typeof cvssScore === 'number') {
-        return { severity: cvssToSeverity(cvssScore), severitySource: 'ghsa_cvss' };
-      }
+      if (typeof cvssScore === 'number') return { severity: cvssToSeverity(cvssScore), severitySource: 'ghsa_cvss' };
       const label = data.severity?.toLowerCase();
       if (label === 'critical' || label === 'high' || label === 'medium' || label === 'low') {
         return { severity: label, severitySource: 'ghsa_label' };
@@ -371,6 +333,78 @@ export class OsvClient {
     }
     return null;
   }
+
+  private async enrichUnknownVulns(
+    unresolved: Array<{ id: string; aliases: string[] }>
+  ): Promise<Map<string, Pick<OsvVulnerability, 'severity' | 'severitySource' | 'unknownReason'>>> {
+    const resolvedEntries = await mapWithConcurrency(unresolved, ENRICH_CONCURRENCY, async ({ id, aliases }) => {
+      try {
+        let raw = await this.readDetailCache(id);
+        if (!raw) {
+          raw = await this.fetchVulnDetail(id);
+          await this.writeDetailCache(id, raw);
+        }
+        const mapped = mapSeverity(raw, 'osv_detail');
+        if (mapped.severity !== 'unknown') return [id, mapped] as const;
+
+        const cveAliases = (raw.aliases ?? aliases).filter((alias) => alias.startsWith('CVE-'));
+        for (const cveId of cveAliases) {
+          let score = await this.readNvdCache(cveId);
+          if (score === null) {
+            score = await this.fetchNvdCvss(cveId);
+            if (score !== null) await this.writeNvdCache(cveId, score);
+          }
+          if (score !== null) {
+            return [id, { severity: cvssToSeverity(score), severitySource: 'alias_cvss' as const }] as const;
+          }
+        }
+
+        const ghsaIds = new Set<string>();
+        if (id.startsWith('GHSA-')) ghsaIds.add(id);
+        for (const alias of raw.aliases ?? aliases) {
+          if (alias.startsWith('GHSA-')) ghsaIds.add(alias);
+        }
+        for (const ghsaId of ghsaIds) {
+          const ghsaSeverity = await this.resolveGhsaSeverity(ghsaId);
+          if (ghsaSeverity) return [id, ghsaSeverity] as const;
+        }
+
+        return [id, mapped] as const;
+      } catch {
+        return [
+          id,
+          { severity: 'unknown' as const, severitySource: 'unknown' as const, unknownReason: 'lookup_failed' as const }
+        ] as const;
+      }
+    });
+
+    return new Map(resolvedEntries);
+  }
+
+  private async pruneExpiredCache(dirPath: string): Promise<void> {
+    let entries;
+    try {
+      entries = await readdir(dirPath, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    const now = Date.now();
+    await Promise.all(
+      entries.map(async (entry) => {
+        const fullPath = path.join(dirPath, String(entry.name));
+        if (entry.isDirectory()) {
+          await this.pruneExpiredCache(fullPath);
+          return;
+        }
+        try {
+          const info = await stat(fullPath);
+          if (now - info.mtimeMs > TTL_MS) await unlink(fullPath);
+        } catch {
+          // Best-effort pruning.
+        }
+      })
+    );
+  }
 }
 
 function normalizeVuln(vuln: OsvRawVuln, source: 'osv' | 'osv_detail' = 'osv'): OsvVulnerability {
@@ -382,7 +416,9 @@ function normalizeVuln(vuln: OsvRawVuln, source: 'osv' | 'osv_detail' = 'osv'): 
     modified: vuln.modified,
     severity: mapped.severity,
     severitySource: mapped.severitySource,
-    unknownReason: mapped.unknownReason
+    unknownReason: mapped.unknownReason,
+    references: extractReferences(vuln),
+    fixedVersion: extractFixedVersion(vuln)
   };
 }
 
@@ -443,4 +479,39 @@ function extractNvdBaseScore(data: NvdResponse): number | null {
   const v2 = metrics?.cvssMetricV2?.[0]?.cvssData?.baseScore;
   if (typeof v2 === 'number') return v2;
   return null;
+}
+
+function extractReferences(vuln: OsvRawVuln): string[] | undefined {
+  const refs = vuln.references?.map((r) => r.url).filter((u): u is string => Boolean(u));
+  if (!refs?.length) return undefined;
+  return [...new Set(refs)];
+}
+
+function extractFixedVersion(vuln: OsvRawVuln): string | undefined {
+  const fixed = vuln.affected
+    ?.flatMap((a) => a.ranges ?? [])
+    .flatMap((r) => r.events ?? [])
+    .map((e) => e.fixed)
+    .filter((v): v is string => Boolean(v))
+    .sort()[0];
+  return fixed;
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<R>
+): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const run = async () => {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      out[index] = await worker(items[index]);
+    }
+  };
+  const workers = Array.from({ length: Math.max(1, Math.min(concurrency, items.length)) }, () => run());
+  await Promise.all(workers);
+  return out;
 }

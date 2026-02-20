@@ -6,8 +6,8 @@ import test from 'node:test';
 import { runScan } from '../src/scan.js';
 
 test('runScan computes severity/confidence and deterministic summary counts', async () => {
-  const projectDir = await mkdtemp(path.join(os.tmpdir(), 'secscan-project-'));
-  const outDir = path.join(projectDir, '.secscan');
+  const projectDir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-project-'));
+  const outDir = path.join(projectDir, '.bardcheck');
   await mkdir(path.join(projectDir, 'src'), { recursive: true });
 
   const lock = {
@@ -60,7 +60,9 @@ test('runScan computes severity/confidence and deterministic summary counts', as
       projectPath: projectDir,
       outDir,
       failOn: 'high',
-      offline: false
+      offline: false,
+      unknownAs: 'unknown',
+      refreshCache: false
     });
 
     assert.equal(report.summary.dependencyCount, 3);
@@ -94,8 +96,8 @@ test('runScan computes severity/confidence and deterministic summary counts', as
 });
 
 test('runScan marks offline missing cache entries as unknown findings', async () => {
-  const projectDir = await mkdtemp(path.join(os.tmpdir(), 'secscan-offline-'));
-  const outDir = path.join(projectDir, '.secscan');
+  const projectDir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-offline-'));
+  const outDir = path.join(projectDir, '.bardcheck');
 
   const lock = {
     lockfileVersion: 2,
@@ -112,7 +114,9 @@ test('runScan marks offline missing cache entries as unknown findings', async ()
     projectPath: projectDir,
     outDir,
     failOn: 'high',
-    offline: true
+    offline: true,
+    unknownAs: 'unknown',
+    refreshCache: false
   });
 
   assert.equal(report.summary.findingsCount, 2);
@@ -127,4 +131,32 @@ test('runScan marks offline missing cache entries as unknown findings', async ()
   assert.equal(report.findings.every((f) => f.confidence === 'unknown'), true);
   assert.equal(report.findings.every((f) => f.severitySource === 'unknown'), true);
   assert.equal(report.findings.every((f) => f.unknownReason === 'lookup_failed'), true);
+});
+
+test('runScan applies unknownAs policy for unresolved findings', async () => {
+  const projectDir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-policy-'));
+  const outDir = path.join(projectDir, '.bardcheck');
+
+  const lock = {
+    lockfileVersion: 2,
+    packages: {
+      '': {},
+      'node_modules/lodash': { version: '4.17.21' }
+    }
+  };
+
+  await writeFile(path.join(projectDir, 'package-lock.json'), JSON.stringify(lock));
+
+  const report = await runScan({
+    projectPath: projectDir,
+    outDir,
+    failOn: 'high',
+    offline: true,
+    unknownAs: 'high',
+    refreshCache: false
+  });
+
+  assert.equal(report.findings[0]?.severity, 'high');
+  assert.equal(report.findings[0]?.severitySource, 'policy_override');
+  assert.equal(report.findings[0]?.unknownReason, 'lookup_failed');
 });

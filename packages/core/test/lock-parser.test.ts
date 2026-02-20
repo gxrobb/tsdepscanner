@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { parsePackageLock } from '../src/lock-parser.js';
 
 test('parsePackageLock resolves direct and transitive dependencies for lockfile v2', async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'secscan-'));
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-'));
   const lock = {
     lockfileVersion: 2,
     packages: {
@@ -27,7 +27,7 @@ test('parsePackageLock resolves direct and transitive dependencies for lockfile 
 });
 
 test('parsePackageLock correctly handles scoped package paths and direct classification', async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'secscan-'));
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-'));
   const lock = {
     lockfileVersion: 2,
     packages: {
@@ -48,7 +48,7 @@ test('parsePackageLock correctly handles scoped package paths and direct classif
 });
 
 test('parsePackageLock parses pnpm-lock.yaml with direct dependency classification', async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'secscan-'));
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-'));
   await writeFile(
     path.join(dir, 'package.json'),
     JSON.stringify({
@@ -79,8 +79,37 @@ test('parsePackageLock parses pnpm-lock.yaml with direct dependency classificati
   assert.equal(ansi?.direct, false);
 });
 
+test('parsePackageLock treats all pnpm importer dependencies as direct (workspace)', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-'));
+  await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'root' }));
+  await writeFile(
+    path.join(dir, 'pnpm-lock.yaml'),
+    [
+      'lockfileVersion: "9.0"',
+      'importers:',
+      '  .:',
+      '    dependencies:',
+      '      lodash:',
+      '        specifier: ^4.17.21',
+      '        version: 4.17.21',
+      '  packages/app:',
+      '    dependencies:',
+      '      react:',
+      '        specifier: ^18.2.0',
+      '        version: 18.2.0',
+      'packages:',
+      '  lodash@4.17.21: {}',
+      '  react@18.2.0: {}'
+    ].join('\n')
+  );
+
+  const parsed = await parsePackageLock(dir);
+  assert.equal(parsed.dependencies.find((d) => d.name === 'lodash')?.direct, true);
+  assert.equal(parsed.dependencies.find((d) => d.name === 'react')?.direct, true);
+});
+
 test('parsePackageLock parses yarn.lock with direct dependency classification', async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'secscan-'));
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-'));
   await writeFile(
     path.join(dir, 'package.json'),
     JSON.stringify({
@@ -103,8 +132,25 @@ test('parsePackageLock parses yarn.lock with direct dependency classification', 
   assert.equal(ansi?.direct, false);
 });
 
+test('parsePackageLock marks workspace package dependencies as direct for yarn projects', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-'));
+  await mkdir(path.join(dir, 'packages', 'app'), { recursive: true });
+  await writeFile(
+    path.join(dir, 'package.json'),
+    JSON.stringify({
+      private: true,
+      workspaces: ['packages/*']
+    })
+  );
+  await writeFile(path.join(dir, 'packages', 'app', 'package.json'), JSON.stringify({ dependencies: { react: '^18.2.0' } }));
+  await writeFile(path.join(dir, 'yarn.lock'), ['"react@^18.2.0":', '  version "18.2.0"'].join('\n'));
+
+  const parsed = await parsePackageLock(dir);
+  assert.equal(parsed.dependencies.find((d) => d.name === 'react')?.direct, true);
+});
+
 test('parsePackageLock falls back to package.json direct deps for bun lockfiles', async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'secscan-'));
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-'));
   await writeFile(
     path.join(dir, 'package.json'),
     JSON.stringify({
@@ -124,4 +170,15 @@ test('parsePackageLock falls back to package.json direct deps for bun lockfiles'
   assert.equal(next?.version, '14.2.0');
   assert.equal(chalk?.version, '5.3.0');
   assert.equal(parsed.dependencies.every((d) => d.direct), true);
+});
+
+test('parsePackageLock includes bun workspace dependencies as direct', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-'));
+  await mkdir(path.join(dir, 'packages', 'web'), { recursive: true });
+  await writeFile(path.join(dir, 'package.json'), JSON.stringify({ workspaces: ['packages/*'] }));
+  await writeFile(path.join(dir, 'packages', 'web', 'package.json'), JSON.stringify({ dependencies: { next: '^14.0.0' } }));
+  await writeFile(path.join(dir, 'bun.lock'), '# bun lock');
+
+  const parsed = await parsePackageLock(dir);
+  assert.equal(parsed.dependencies.find((d) => d.name === 'next')?.direct, true);
 });

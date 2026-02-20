@@ -1,5 +1,6 @@
 export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'unknown';
 export type Confidence = 'high' | 'medium' | 'low' | 'unknown';
+export type KnownSeverity = Exclude<Severity, 'unknown'>;
 export type SeveritySource =
   | 'osv_cvss'
   | 'osv_label'
@@ -8,6 +9,7 @@ export type SeveritySource =
   | 'alias_cvss'
   | 'ghsa_cvss'
   | 'ghsa_label'
+  | 'policy_override'
   | 'unknown';
 export type UnknownReason = 'missing_score' | 'lookup_failed';
 
@@ -29,6 +31,8 @@ export interface OsvVulnerability {
   severitySource: SeveritySource;
   unknownReason?: UnknownReason;
   modified?: string;
+  references?: string[];
+  fixedVersion?: string;
 }
 
 export interface Finding {
@@ -63,4 +67,6 @@ export interface ScanOptions {
   outDir: string;
   failOn: Severity | 'none';
   offline: boolean;
+  unknownAs: Severity;
+  refreshCache: boolean;
 }

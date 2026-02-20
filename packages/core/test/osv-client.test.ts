@@ -6,7 +6,7 @@ import { mkdtemp } from 'node:fs/promises';
 import { OsvClient } from '../src/osv-client.js';
 
 test('OsvClient returns unknown results when online query fails', async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'secscan-cache-'));
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-cache-'));
   const client = new OsvClient(dir, false);
 
   const originalFetch = globalThis.fetch;
@@ -25,7 +25,7 @@ test('OsvClient returns unknown results when online query fails', async () => {
 });
 
 test('OsvClient maps severities and then serves cached entries without network', async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'secscan-cache-'));
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-cache-'));
   const client = new OsvClient(dir, false);
   const pkgs = [
     { name: 'critical-pkg', version: '1.0.0' },
@@ -92,7 +92,7 @@ test('OsvClient maps severities and then serves cached entries without network',
 });
 
 test('OsvClient annotates unknown reason when detail lookup fails', async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'secscan-cache-'));
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-cache-'));
   const client = new OsvClient(dir, false);
   const originalFetch = globalThis.fetch;
 
@@ -120,7 +120,7 @@ test('OsvClient annotates unknown reason when detail lookup fails', async () => 
 });
 
 test('OsvClient falls back to CVE alias CVSS via NVD when OSV lacks severity', async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'secscan-cache-'));
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-cache-'));
   const client = new OsvClient(dir, false);
   const originalFetch = globalThis.fetch;
 
@@ -162,7 +162,7 @@ test('OsvClient falls back to CVE alias CVSS via NVD when OSV lacks severity', a
 });
 
 test('OsvClient falls back to GHSA advisory severity when no CVE score exists', async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'secscan-cache-'));
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-cache-'));
   const client = new OsvClient(dir, false);
   const originalFetch = globalThis.fetch;
 
@@ -195,6 +195,44 @@ test('OsvClient falls back to GHSA advisory severity when no CVE score exists', 
     const vuln = result.get('pkg@1.0.0')?.vulnerabilities[0];
     assert.equal(vuln?.severity, 'high');
     assert.equal(vuln?.severitySource, 'ghsa_label');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('OsvClient refreshCache bypasses existing cache entries', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-cache-'));
+  const warmClient = new OsvClient(dir, false);
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async (input, init) => {
+    const url = String(input);
+    const method = (init?.method ?? 'GET').toUpperCase();
+    if (url.endsWith('/v1/querybatch') && method === 'POST') {
+      return {
+        ok: true,
+        json: async () => ({ results: [{ vulns: [{ id: 'OSV-CACHED', database_specific: { severity: 'high' } }] }] })
+      } as Response;
+    }
+    throw new Error(`unexpected request: ${method} ${url}`);
+  }) as typeof fetch;
+
+  try {
+    const warm = await warmClient.batchQuery([{ name: 'pkg', version: '1.0.0' }]);
+    assert.equal(warm.get('pkg@1.0.0')?.source, 'osv');
+    assert.equal(warm.get('pkg@1.0.0')?.vulnerabilities[0]?.severity, 'high');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  const refreshClient = new OsvClient(dir, false, true);
+  globalThis.fetch = (async () => {
+    throw new Error('network down');
+  }) as typeof fetch;
+  try {
+    const refreshed = await refreshClient.batchQuery([{ name: 'pkg', version: '1.0.0' }]);
+    assert.equal(refreshed.get('pkg@1.0.0')?.source, 'unknown');
+    assert.deepEqual(refreshed.get('pkg@1.0.0')?.vulnerabilities, []);
   } finally {
     globalThis.fetch = originalFetch;
   }

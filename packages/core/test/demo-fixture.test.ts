@@ -7,14 +7,16 @@ import { runScan } from '../src/scan.js';
 const thisDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(thisDir, '../../..');
 const demoPath = path.join(repoRoot, 'examples', 'vulnerable-demo');
-const demoOutDir = path.join(demoPath, '.secscan');
+const demoOutDir = path.join(demoPath, '.bardcheck');
 
 test('demo fixture produces deterministic offline findings from seeded cache', async () => {
   const report = await runScan({
     projectPath: demoPath,
     outDir: demoOutDir,
     failOn: 'low',
-    offline: true
+    offline: true,
+    unknownAs: 'unknown',
+    refreshCache: false
   });
 
   assert.equal(report.summary.dependencyCount, 2);

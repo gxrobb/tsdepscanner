@@ -5,8 +5,8 @@ All notable changes to this project are documented in this file.
 ## [0.1.0] - 2026-02-19
 
 ### Added
-- Initial `secscan` monorepo scaffold with `@secscan/core` and `secscan` CLI packages.
-- `secscan scan [path]` command with JSON/Markdown output, severity threshold exit codes, and offline mode.
+- Initial `bardcheck` monorepo scaffold with `@bardcheck/core` and `bardcheck` CLI packages.
+- `bardcheck scan [path]` command with JSON/Markdown output, severity threshold exit codes, and offline mode.
 - `package-lock.json` parser with direct/transitive dependency classification.
 - OSV batch querying client with 24h cache support.
 - Evidence collection from `.ts`, `.tsx`, and `.vue` imports/requires.

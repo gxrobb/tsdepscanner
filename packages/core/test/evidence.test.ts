@@ -6,7 +6,7 @@ import test from 'node:test';
 import { collectEvidence } from '../src/evidence.js';
 
 test('collectEvidence indexes imports across TS/JS/Vue files and ignores local paths', async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'secscan-evidence-'));
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-evidence-'));
   await mkdir(path.join(dir, 'src'), { recursive: true });
 
   await writeFile(
@@ -33,7 +33,7 @@ test('collectEvidence indexes imports across TS/JS/Vue files and ignores local p
 });
 
 test('collectEvidence ignores node_modules, dist, and .next folders', async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'secscan-evidence-ignore-'));
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-evidence-ignore-'));
   await mkdir(path.join(dir, 'src'), { recursive: true });
   await mkdir(path.join(dir, 'dist'), { recursive: true });
   await mkdir(path.join(dir, '.next'), { recursive: true });

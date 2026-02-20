@@ -8,7 +8,7 @@ import { Confidence, Finding, ScanOptions, ScanReport, Severity, SeveritySource,
 export async function runScan(options: ScanOptions): Promise<ScanReport> {
   const parsed = await parsePackageLock(options.projectPath);
   const evidence = await collectEvidence(options.projectPath);
-  const osv = new OsvClient(path.join(options.outDir, '.cache', 'osv'), options.offline);
+  const osv = new OsvClient(path.join(options.outDir, '.cache', 'osv'), options.offline, options.refreshCache);
   const osvResults = await osv.batchQuery(parsed.dependencies.map((d) => ({ name: d.name, version: d.version })));
 
   const findings: Finding[] = [];
@@ -22,13 +22,17 @@ export async function runScan(options: ScanOptions): Promise<ScanReport> {
     const hasEvidence = evidenceFiles.length > 0;
 
     if (result.source === 'unknown') {
+      const resolved = applyUnknownPolicy(
+        { severity: 'unknown', severitySource: 'unknown', unknownReason: 'lookup_failed' },
+        options.unknownAs
+      );
       findings.push({
         packageName: dep.name,
         version: dep.version,
         direct: dep.direct,
-        severity: 'unknown',
-        severitySource: 'unknown',
-        unknownReason: 'lookup_failed',
+        severity: resolved.severity,
+        severitySource: resolved.severitySource,
+        unknownReason: resolved.unknownReason,
         confidence: 'unknown',
         evidence: evidenceFiles,
         vulnerabilities: [],
@@ -39,7 +43,7 @@ export async function runScan(options: ScanOptions): Promise<ScanReport> {
 
     if (result.vulnerabilities.length === 0) continue;
 
-    const top = highestSeverity(result.vulnerabilities);
+    const top = applyUnknownPolicy(highestSeverity(result.vulnerabilities), options.unknownAs);
     const confidence = determineConfidence(dep.direct, hasEvidence);
 
     findings.push({
@@ -88,6 +92,15 @@ function highestSeverity(
   const rank: Record<Severity, number> = { critical: 5, high: 4, medium: 3, low: 2, unknown: 1 };
   const sorted = [...vulnerabilities].sort((a, b) => rank[b.severity] - rank[a.severity]);
   return sorted[0] ?? { severity: 'unknown', severitySource: 'unknown', unknownReason: 'missing_score' };
+}
+
+function applyUnknownPolicy(
+  current: { severity: Severity; severitySource: SeveritySource; unknownReason?: UnknownReason },
+  unknownAs: Severity
+): { severity: Severity; severitySource: SeveritySource; unknownReason?: UnknownReason } {
+  if (current.severity !== 'unknown') return current;
+  if (unknownAs === 'unknown') return current;
+  return { severity: unknownAs, severitySource: 'policy_override', unknownReason: current.unknownReason };
 }
 
 function countBySeverity(findings: Finding[]): Record<Severity, number> {

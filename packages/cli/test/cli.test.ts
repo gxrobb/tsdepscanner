@@ -40,7 +40,7 @@ function makeReport(severity: 'critical' | 'high' | 'medium' | 'low' | 'unknown'
 }
 
 test('runCli writes only JSON report and returns exit code 1 on threshold match', async () => {
-  const outDir = await mkdtemp(path.join(os.tmpdir(), 'secscan-cli-json-'));
+  const outDir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-cli-json-'));
   const writes: string[] = [];
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -51,6 +51,7 @@ test('runCli writes only JSON report and returns exit code 1 on threshold match'
     },
     runScan: async () => makeReport('high'),
     buildMarkdownReport: () => '# report',
+    buildSarifReport: () => ({ version: '2.1.0', runs: [] }),
     shouldFail: (failOn, findingSeverity) => failOn === findingSeverity,
     stdout: { write: (text: string) => stdout.push(text) },
     stderr: { write: (text: string) => stderr.push(text) }
@@ -64,10 +65,12 @@ test('runCli writes only JSON report and returns exit code 1 on threshold match'
   assert.equal(writes[0], path.resolve(outDir, 'report.json'));
   assert.match(stdout.join(''), /report\.json/);
   assert.doesNotMatch(stdout.join(''), /report\.md/);
+  assert.match(stdout.join(''), /bardcheck summary/);
+  assert.match(stdout.join(''), /threshold hit: yes/);
 });
 
 test('runCli writes only Markdown report and returns exit code 0 for fail-on none', async () => {
-  const outDir = await mkdtemp(path.join(os.tmpdir(), 'secscan-cli-md-'));
+  const outDir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-cli-md-'));
   const writes: string[] = [];
   const stdout: string[] = [];
   const deps: CliDeps = {
@@ -77,6 +80,7 @@ test('runCli writes only Markdown report and returns exit code 0 for fail-on non
     },
     runScan: async () => makeReport('critical'),
     buildMarkdownReport: () => '# markdown-report',
+    buildSarifReport: () => ({ version: '2.1.0', runs: [] }),
     shouldFail: () => true,
     stdout: { write: (text: string) => stdout.push(text) },
     stderr: { write: () => undefined }
@@ -89,10 +93,12 @@ test('runCli writes only Markdown report and returns exit code 0 for fail-on non
   assert.equal(writes[0], path.resolve(outDir, 'report.md'));
   assert.match(stdout.join(''), /report\.md/);
   assert.doesNotMatch(stdout.join(''), /report\.json/);
+  assert.match(stdout.join(''), /bardcheck summary/);
+  assert.match(stdout.join(''), /threshold hit: no/);
 });
 
 test('runCli returns exit code 2 and writes to stderr on tool errors', async () => {
-  const outDir = await mkdtemp(path.join(os.tmpdir(), 'secscan-cli-err-'));
+  const outDir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-cli-err-'));
   const stderr: string[] = [];
   const deps: CliDeps = {
     mkdir: async () => undefined,
@@ -101,6 +107,7 @@ test('runCli returns exit code 2 and writes to stderr on tool errors', async () 
       throw new Error('boom');
     },
     buildMarkdownReport: () => '# report',
+    buildSarifReport: () => ({ version: '2.1.0', runs: [] }),
     shouldFail: () => false,
     stdout: { write: () => undefined },
     stderr: { write: (text: string) => stderr.push(text) }
@@ -110,4 +117,26 @@ test('runCli returns exit code 2 and writes to stderr on tool errors', async () 
 
   assert.equal(code, 2);
   assert.match(stderr.join(''), /boom/);
+});
+
+test('runCli writes SARIF report when format is sarif', async () => {
+  const outDir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-cli-sarif-'));
+  const writes: string[] = [];
+  const deps: CliDeps = {
+    mkdir: async () => undefined,
+    writeFile: async (filePath) => {
+      writes.push(String(filePath));
+    },
+    runScan: async () => makeReport('medium'),
+    buildMarkdownReport: () => '# report',
+    buildSarifReport: () => ({ version: '2.1.0', runs: [{ tool: { driver: { name: 'bardcheck' } }, results: [] }] }),
+    shouldFail: () => false,
+    stdout: { write: () => undefined },
+    stderr: { write: () => undefined }
+  };
+
+  const code = await runCli(['scan', '.', '--format', 'sarif', '--out-dir', outDir, '--fail-on', 'none'], deps);
+  assert.equal(code, 0);
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0], path.resolve(outDir, 'report.sarif'));
 });

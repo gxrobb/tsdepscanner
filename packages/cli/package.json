@@ -1,9 +1,9 @@
 {
-  "name": "secscan",
+  "name": "bardcheck",
   "version": "0.1.0",
   "type": "module",
   "bin": {
-    "secscan": "dist/index.js"
+    "bardcheck": "dist/index.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -11,7 +11,7 @@
     "test": "node --test --import tsx test/**/*.test.ts"
   },
   "dependencies": {
-    "@secscan/core": "workspace:*",
+    "@bardcheck/core": "workspace:*",
     "yargs": "^17.7.2"
   },
   "devDependencies": {

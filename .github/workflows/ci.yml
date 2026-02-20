@@ -26,4 +26,10 @@ jobs:
       - name: Build
         run: corepack pnpm build
       - name: Verify Demo Fixture
-        run: node ./packages/cli/dist/index.js scan ./examples/vulnerable-demo --format both --out-dir ./examples/vulnerable-demo/.secscan --fail-on none --offline
+        run: node ./packages/cli/dist/index.js scan ./examples/vulnerable-demo --format both --out-dir ./examples/vulnerable-demo/.bardcheck --fail-on none --offline
+      - name: Verify Manager Fixtures
+        run: |
+          node ./packages/cli/dist/index.js scan ./examples/npm-demo --format json --out-dir ./examples/npm-demo/.bardcheck --fail-on none --offline
+          node ./packages/cli/dist/index.js scan ./examples/yarn-demo --format json --out-dir ./examples/yarn-demo/.bardcheck --fail-on none --offline
+          node ./packages/cli/dist/index.js scan ./examples/pnpm-demo --format json --out-dir ./examples/pnpm-demo/.bardcheck --fail-on none --offline
+          node ./packages/cli/dist/index.js scan ./examples/bun-demo --format json --out-dir ./examples/bun-demo/.bardcheck --fail-on none --offline
