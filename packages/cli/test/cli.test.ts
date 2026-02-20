@@ -140,3 +140,34 @@ test('runCli writes SARIF report when format is sarif', async () => {
   assert.equal(writes.length, 1);
   assert.equal(writes[0], path.resolve(outDir, 'report.sarif'));
 });
+
+test('runCli colorizes summary output when stdout is a TTY', async () => {
+  const outDir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-cli-color-'));
+  const stdout: string[] = [];
+  const previousNoColor = process.env.NO_COLOR;
+  delete process.env.NO_COLOR;
+  const deps: CliDeps = {
+    mkdir: async () => undefined,
+    writeFile: async () => undefined,
+    runScan: async () => makeReport('high'),
+    buildMarkdownReport: () => '# report',
+    buildSarifReport: () => ({ version: '2.1.0', runs: [] }),
+    shouldFail: (failOn, findingSeverity) => failOn === findingSeverity,
+    stdout: { write: (text: string) => stdout.push(text), isTTY: true },
+    stderr: { write: () => undefined }
+  };
+
+  try {
+    const code = await runCli(['scan', '.', '--format', 'json', '--out-dir', outDir, '--fail-on', 'high'], deps);
+    assert.equal(code, 1);
+    const output = stdout.join('');
+    assert.equal(output.includes('\u001b[36mbardcheck summary\u001b[0m'), true);
+    assert.equal(output.includes('\u001b[31myes\u001b[0m'), true);
+  } finally {
+    if (previousNoColor === undefined) {
+      delete process.env.NO_COLOR;
+    } else {
+      process.env.NO_COLOR = previousNoColor;
+    }
+  }
+});
