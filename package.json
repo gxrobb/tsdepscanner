@@ -11,7 +11,7 @@
     "lint": "corepack pnpm -r lint",
     "test": "corepack pnpm -r test",
     "demo:scan": "node ./packages/cli/dist/index.js scan ./examples/vulnerable-demo --format both --out-dir ./examples/vulnerable-demo/.bardcheck --fail-on none --offline",
-    "release:dry-run": "corepack pnpm --filter bardcheck pack --pack-destination ./.artifacts",
+    "release:dry-run": "corepack pnpm --dir packages/cli pack --pack-destination ../../.artifacts",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
