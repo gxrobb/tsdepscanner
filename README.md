@@ -100,7 +100,8 @@ Flags:
 - `--offline` (cache only; missing entries become unknown)
 - `--unknown-as critical|high|medium|low|unknown` (default: `unknown`)
 - `--refresh-cache` (ignore cached advisory data and refetch)
-- `--list-findings none|critical-high|all` (default: `none`; prints finding details in terminal)
+- `--list-findings none|critical-high|medium-up|all` (default: `none`; prints finding details in terminal)
+- `--findings-json <path>` (write filtered findings list as JSON, using current `--list-findings` mode)
 
 Exit codes:
 
@@ -114,8 +115,25 @@ Examples:
 # Print only critical/high finding details in CLI output
 bardcheck scan . --list-findings critical-high
 
+# Print medium/high/critical finding details in CLI output
+bardcheck scan . --list-findings medium-up
+
 # Print all finding details in CLI output
 bardcheck scan . --list-findings all
+
+# Write machine-friendly filtered findings JSON
+bardcheck scan . --list-findings critical-high --findings-json ./.bardcheck/findings.critical-high.json
+```
+
+Real project triage example:
+
+```bash
+bardcheck scan /Users/solinarmac/Documents/dev/portfolio \
+  --format both \
+  --out-dir /tmp/bardcheck-portfolio \
+  --fail-on none \
+  --list-findings critical-high \
+  --findings-json /tmp/bardcheck-portfolio/findings.critical-high.json
 ```
 
 ## Cache

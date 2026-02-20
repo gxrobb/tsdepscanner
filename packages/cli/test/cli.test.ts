@@ -231,3 +231,151 @@ test('runCli lists critical/high findings when list mode is critical-high', asyn
   assert.match(output, /high-pkg@1.0.0/);
   assert.doesNotMatch(output, /low-pkg@1.0.0/);
 });
+
+test('runCli lists medium/high/critical findings when list mode is medium-up', async () => {
+  const outDir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-cli-list-med-'));
+  const stdout: string[] = [];
+  const deps: CliDeps = {
+    mkdir: async () => undefined,
+    writeFile: async () => undefined,
+    runScan: async () => ({
+      targetPath: '/tmp/project',
+      generatedAt: '2026-02-19T00:00:00.000Z',
+      failOn: 'none',
+      summary: {
+        dependencyCount: 3,
+        scannedFiles: 1,
+        findingsCount: 3,
+        bySeverity: { critical: 0, high: 1, medium: 1, low: 1, unknown: 0 },
+        byConfidence: { high: 1, medium: 2, low: 0, unknown: 0 }
+      },
+      findings: [
+        {
+          packageName: 'high-pkg',
+          version: '1.0.0',
+          direct: true,
+          severity: 'high',
+          severitySource: 'osv_label',
+          confidence: 'high',
+          evidence: ['src/a.ts'],
+          vulnerabilities: [{ id: 'OSV-HIGH', severity: 'high', severitySource: 'osv_label' }],
+          source: 'osv'
+        },
+        {
+          packageName: 'medium-pkg',
+          version: '1.0.0',
+          direct: true,
+          severity: 'medium',
+          severitySource: 'osv_label',
+          confidence: 'medium',
+          evidence: [],
+          vulnerabilities: [{ id: 'OSV-MED', severity: 'medium', severitySource: 'osv_label' }],
+          source: 'osv'
+        },
+        {
+          packageName: 'low-pkg',
+          version: '1.0.0',
+          direct: false,
+          severity: 'low',
+          severitySource: 'osv_label',
+          confidence: 'low',
+          evidence: ['src/b.ts'],
+          vulnerabilities: [{ id: 'OSV-LOW', severity: 'low', severitySource: 'osv_label' }],
+          source: 'osv'
+        }
+      ]
+    }),
+    buildMarkdownReport: () => '# report',
+    buildSarifReport: () => ({ version: '2.1.0', runs: [] }),
+    shouldFail: () => false,
+    stdout: { write: (text: string) => stdout.push(text) },
+    stderr: { write: () => undefined }
+  };
+
+  const code = await runCli(
+    ['scan', '.', '--format', 'json', '--out-dir', outDir, '--fail-on', 'none', '--list-findings', 'medium-up'],
+    deps
+  );
+  assert.equal(code, 0);
+  const output = stdout.join('');
+  assert.match(output, /high-pkg@1.0.0/);
+  assert.match(output, /medium-pkg@1.0.0/);
+  assert.doesNotMatch(output, /low-pkg@1.0.0/);
+});
+
+test('runCli writes filtered findings JSON when findings-json is set', async () => {
+  const outDir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-cli-findings-json-'));
+  const writes: Array<{ filePath: string; content: string }> = [];
+  const deps: CliDeps = {
+    mkdir: async () => undefined,
+    writeFile: async (filePath, content) => {
+      writes.push({ filePath: String(filePath), content: String(content) });
+    },
+    runScan: async () => ({
+      targetPath: '/tmp/project',
+      generatedAt: '2026-02-19T00:00:00.000Z',
+      failOn: 'none',
+      summary: {
+        dependencyCount: 2,
+        scannedFiles: 1,
+        findingsCount: 2,
+        bySeverity: { critical: 0, high: 1, medium: 0, low: 1, unknown: 0 },
+        byConfidence: { high: 1, medium: 1, low: 0, unknown: 0 }
+      },
+      findings: [
+        {
+          packageName: 'high-pkg',
+          version: '1.0.0',
+          direct: true,
+          severity: 'high',
+          severitySource: 'osv_label',
+          confidence: 'high',
+          evidence: ['src/a.ts'],
+          vulnerabilities: [{ id: 'OSV-HIGH', severity: 'high', severitySource: 'osv_label' }],
+          source: 'osv'
+        },
+        {
+          packageName: 'low-pkg',
+          version: '1.0.0',
+          direct: false,
+          severity: 'low',
+          severitySource: 'osv_label',
+          confidence: 'low',
+          evidence: ['src/b.ts'],
+          vulnerabilities: [{ id: 'OSV-LOW', severity: 'low', severitySource: 'osv_label' }],
+          source: 'osv'
+        }
+      ]
+    }),
+    buildMarkdownReport: () => '# report',
+    buildSarifReport: () => ({ version: '2.1.0', runs: [] }),
+    shouldFail: () => false,
+    stdout: { write: () => undefined },
+    stderr: { write: () => undefined }
+  };
+
+  const findingsJsonPath = path.join(outDir, 'filtered-findings.json');
+  const code = await runCli(
+    [
+      'scan',
+      '.',
+      '--format',
+      'json',
+      '--out-dir',
+      outDir,
+      '--fail-on',
+      'none',
+      '--list-findings',
+      'critical-high',
+      '--findings-json',
+      findingsJsonPath
+    ],
+    deps
+  );
+  assert.equal(code, 0);
+  const findingsWrite = writes.find((w) => w.filePath === path.resolve(findingsJsonPath));
+  assert.ok(findingsWrite);
+  const parsed = JSON.parse(findingsWrite.content) as Array<{ packageName: string }>;
+  assert.equal(parsed.length, 1);
+  assert.equal(parsed[0]?.packageName, 'high-pkg');
+});

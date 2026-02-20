@@ -19,7 +19,7 @@ export interface CliDeps {
 }
 
 type FailOn = Severity | 'none';
-type ListFindingsMode = 'none' | 'critical-high' | 'all';
+type ListFindingsMode = 'none' | 'critical-high' | 'medium-up' | 'all';
 
 const defaultDeps: CliDeps = {
   mkdir,
@@ -78,9 +78,13 @@ export async function runCli(rawArgs: string[], deps: CliDeps = defaultDeps): Pr
             default: false
           })
           .option('list-findings', {
-            choices: ['none', 'critical-high', 'all'] as const,
+            choices: ['none', 'critical-high', 'medium-up', 'all'] as const,
             default: 'none',
             describe: 'Print finding details in CLI output'
+          })
+          .option('findings-json', {
+            type: 'string',
+            describe: 'Write filtered finding details as JSON'
           }),
       async (argv) => {
         try {
@@ -119,6 +123,12 @@ export async function runCli(rawArgs: string[], deps: CliDeps = defaultDeps): Pr
             report.findings.some((f) => deps.shouldFail(argv.failOn as FailOn, f.severity));
           deps.stdout.write(buildCliSummary(report, String(argv.failOn), thresholdHit, useColor(deps.stdout)));
           deps.stdout.write(buildFindingsList(report, argv.listFindings as ListFindingsMode, useColor(deps.stdout)));
+          if (argv.findingsJson) {
+            const findingsJsonPath = path.resolve(String(argv.findingsJson));
+            const filteredFindings = filterFindings(report, argv.listFindings as ListFindingsMode);
+            await deps.writeFile(findingsJsonPath, JSON.stringify(filteredFindings, null, 2));
+            deps.stdout.write(`${findingsJsonPath}\n`);
+          }
 
           if (
             thresholdHit
@@ -176,10 +186,7 @@ function buildFindingsList(
 ): string {
   if (mode === 'none') return '';
 
-  const filtered =
-    mode === 'all'
-      ? report.findings
-      : report.findings.filter((f) => f.severity === 'critical' || f.severity === 'high');
+  const filtered = filterFindings(report, mode);
 
   if (filtered.length === 0) {
     return `\n${colorize('finding details', 'cyan', color)}\n(no matching findings)\n`;
@@ -197,6 +204,20 @@ function buildFindingsList(
     );
   }
   return `${lines.join('\n')}\n`;
+}
+
+function filterFindings(
+  report: Awaited<ReturnType<typeof core.runScan>>,
+  mode: ListFindingsMode
+): Awaited<ReturnType<typeof core.runScan>>['findings'] {
+  if (mode === 'all') return report.findings;
+  if (mode === 'critical-high') {
+    return report.findings.filter((f) => f.severity === 'critical' || f.severity === 'high');
+  }
+  if (mode === 'medium-up') {
+    return report.findings.filter((f) => f.severity === 'critical' || f.severity === 'high' || f.severity === 'medium');
+  }
+  return [];
 }
 
 function severityColor(severity: Severity): 'magenta' | 'red' | 'yellow' | 'green' | 'gray' {
