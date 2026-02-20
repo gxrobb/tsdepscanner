@@ -44,6 +44,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add packages/cli/package.json
           git commit -m "chore(release): bardcheck v${{ steps.version.outputs.value }} [skip ci]"
+          git pull --rebase origin main
           git tag "v${{ steps.version.outputs.value }}"
           git push origin main --follow-tags
 
