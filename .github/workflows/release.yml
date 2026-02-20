@@ -32,7 +32,8 @@ jobs:
         run: corepack pnpm build
 
       - name: Bump bardcheck patch version
-        run: npm version patch --prefix packages/cli --no-git-tag-version
+        working-directory: packages/cli
+        run: npm version patch --no-git-tag-version
 
       - name: Read new version
         id: version
@@ -49,6 +50,7 @@ jobs:
           git push origin main --follow-tags
 
       - name: Publish bardcheck
-        run: npm publish --prefix packages/cli --access public
+        working-directory: packages/cli
+        run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
