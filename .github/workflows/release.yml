@@ -36,7 +36,7 @@ jobs:
 
       - name: Read new version
         id: version
-        run: echo "value=$(node -p \"require('./packages/cli/package.json').version\")" >> "$GITHUB_OUTPUT"
+        run: echo "value=$(jq -r '.version' packages/cli/package.json)" >> "$GITHUB_OUTPUT"
 
       - name: Commit and tag release
         run: |
