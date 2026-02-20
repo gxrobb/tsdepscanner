@@ -1,13 +1,14 @@
 # secscan
 
-`secscan` is a TypeScript-focused dependency vulnerability scanner for npm projects.
+`secscan` is a TypeScript-focused dependency vulnerability scanner for JavaScript/TypeScript projects, including React and Next.js codebases.
 
 ## Features (v1)
 
 - Node 20+ / TypeScript / pnpm workspace monorepo
-- Parses `package-lock.json` only
+- Parses `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, and Bun lockfiles (`bun.lock` / `bun.lockb`) with best-effort dependency resolution
 - Queries vulnerabilities via OSV.dev batch API
-- Collects import evidence from `.ts`, `.tsx`, and `.vue`
+- Enriches missing OSV severities with OSV advisory detail and CVE alias CVSS fallback (NVD), when available
+- Collects import evidence from `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs`, and `.vue`
 - Produces deterministic JSON and Markdown reports
 - CI-friendly severity threshold exit codes
 
@@ -17,6 +18,14 @@
 corepack pnpm install
 corepack pnpm build
 node ./packages/cli/dist/index.js scan . --format both --out-dir ./.secscan --fail-on high
+```
+
+Run without local install:
+
+```bash
+npx secscan scan .
+pnpm dlx secscan scan .
+bunx secscan scan .
 ```
 
 ## Testing
@@ -29,7 +38,7 @@ Coverage includes:
 - lockfile parsing (direct/transitive and scoped packages)
 - deterministic finding sort order
 - OSV fallback/cache behavior and severity mapping
-- evidence collection from `.ts`/`.tsx`/`.vue`
+- evidence collection from TS/JS/Vue files (including React/Next.js style imports)
 - scan orchestration confidence/severity outcomes
 - CLI output format and exit code behavior
 
@@ -56,6 +65,24 @@ node ./packages/cli/dist/index.js scan ./examples/vulnerable-demo --format both 
 
 The demo is deterministic in offline mode because cache fixtures are committed under:
 `examples/vulnerable-demo/.secscan/.cache/osv`
+
+## Lockfile Examples
+
+The repository also includes one example per lockfile type:
+
+- npm: `examples/npm-demo` (`package-lock.json`)
+- Yarn: `examples/yarn-demo` (`yarn.lock`)
+- pnpm: `examples/pnpm-demo` (`pnpm-lock.yaml`)
+- Bun: `examples/bun-demo` (`bun.lock`)
+
+Run scans against each:
+
+```bash
+node ./packages/cli/dist/index.js scan ./examples/npm-demo --format both --out-dir ./examples/npm-demo/.secscan --fail-on none
+node ./packages/cli/dist/index.js scan ./examples/yarn-demo --format both --out-dir ./examples/yarn-demo/.secscan --fail-on none
+node ./packages/cli/dist/index.js scan ./examples/pnpm-demo --format both --out-dir ./examples/pnpm-demo/.secscan --fail-on none
+node ./packages/cli/dist/index.js scan ./examples/bun-demo --format both --out-dir ./examples/bun-demo/.secscan --fail-on none
+```
 
 ## CLI
 
@@ -107,6 +134,7 @@ jobs:
       - run: corepack pnpm install
       - run: corepack pnpm build
       - run: node ./packages/cli/dist/index.js scan . --format both --out-dir ./.secscan --fail-on high
+```
 
 ## Release
 

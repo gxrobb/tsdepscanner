@@ -41,9 +41,10 @@ test('buildMarkdownReport renders vulnerabilities and evidence lines', () => {
         version: '4.17.21',
         direct: true,
         severity: 'high',
+        severitySource: 'osv_label',
         confidence: 'high',
         source: 'osv',
-        vulnerabilities: [{ id: 'OSV-123', severity: 'high', summary: 'Prototype pollution' }],
+        vulnerabilities: [{ id: 'OSV-123', severity: 'high', severitySource: 'osv_label', summary: 'Prototype pollution' }],
         evidence: ['src/main.ts']
       }
     ]
@@ -51,6 +52,7 @@ test('buildMarkdownReport renders vulnerabilities and evidence lines', () => {
 
   const markdown = buildMarkdownReport(report);
   assert.match(markdown, /\*\*lodash@4\.17\.21\*\*/);
+  assert.match(markdown, /severity: high \(osv_label\)/);
   assert.match(markdown, /OSV-123: Prototype pollution/);
   assert.match(markdown, /evidence: src\/main\.ts/);
 });

@@ -10,9 +10,10 @@ test('sortFindings is stable and deterministic', () => {
       version: '1.0.0',
       direct: true,
       severity: 'medium',
+      severitySource: 'osv_label',
       confidence: 'medium',
       evidence: [],
-      vulnerabilities: [{ id: 'OSV-1', severity: 'medium' }],
+      vulnerabilities: [{ id: 'OSV-1', severity: 'medium', severitySource: 'osv_label' }],
       source: 'osv'
     },
     {
@@ -20,9 +21,10 @@ test('sortFindings is stable and deterministic', () => {
       version: '1.0.0',
       direct: true,
       severity: 'high',
+      severitySource: 'osv_label',
       confidence: 'medium',
       evidence: [],
-      vulnerabilities: [{ id: 'OSV-2', severity: 'high' }],
+      vulnerabilities: [{ id: 'OSV-2', severity: 'high', severitySource: 'osv_label' }],
       source: 'osv'
     }
   ];

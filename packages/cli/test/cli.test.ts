@@ -29,9 +29,10 @@ function makeReport(severity: 'critical' | 'high' | 'medium' | 'low' | 'unknown'
         version: '4.17.21',
         direct: true,
         severity,
+        severitySource: 'osv_label',
         confidence: 'high',
         evidence: ['src/index.ts'],
-        vulnerabilities: [{ id: 'OSV-1', severity }],
+        vulnerabilities: [{ id: 'OSV-1', severity, severitySource: 'osv_label' }],
         source: 'osv'
       }
     ]

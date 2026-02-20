@@ -21,8 +21,11 @@ export function buildMarkdownReport(report: ScanReport): string {
 
   for (const finding of report.findings) {
     lines.push(
-      `- **${finding.packageName}@${finding.version}** | severity: ${finding.severity} | confidence: ${finding.confidence} | direct: ${finding.direct}`
+      `- **${finding.packageName}@${finding.version}** | severity: ${finding.severity} (${finding.severitySource}) | confidence: ${finding.confidence} | direct: ${finding.direct}`
     );
+    if (finding.severity === 'unknown' && finding.unknownReason) {
+      lines.push(`  - severity unresolved: ${finding.unknownReason}`);
+    }
     for (const vuln of finding.vulnerabilities) {
       lines.push(`  - ${vuln.id}${vuln.summary ? `: ${vuln.summary}` : ''}`);
     }

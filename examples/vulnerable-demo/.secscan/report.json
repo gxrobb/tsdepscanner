@@ -1,6 +1,6 @@
 {
   "targetPath": "/Users/solinarmac/Documents/dev/depscanner/tsdepscanner/examples/vulnerable-demo",
-  "generatedAt": "2026-02-19T23:41:58.903Z",
+  "generatedAt": "2026-02-19T23:45:00.356Z",
   "failOn": "none",
   "summary": {
     "dependencyCount": 2,

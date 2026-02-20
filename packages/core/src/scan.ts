@@ -3,7 +3,7 @@ import { collectEvidence } from './evidence.js';
 import { parsePackageLock } from './lock-parser.js';
 import { OsvClient } from './osv-client.js';
 import { sortFindings } from './report.js';
-import { Confidence, Finding, ScanOptions, ScanReport, Severity } from './types.js';
+import { Confidence, Finding, ScanOptions, ScanReport, Severity, SeveritySource, UnknownReason } from './types.js';
 
 export async function runScan(options: ScanOptions): Promise<ScanReport> {
   const parsed = await parsePackageLock(options.projectPath);
@@ -27,6 +27,8 @@ export async function runScan(options: ScanOptions): Promise<ScanReport> {
         version: dep.version,
         direct: dep.direct,
         severity: 'unknown',
+        severitySource: 'unknown',
+        unknownReason: 'lookup_failed',
         confidence: 'unknown',
         evidence: evidenceFiles,
         vulnerabilities: [],
@@ -37,14 +39,16 @@ export async function runScan(options: ScanOptions): Promise<ScanReport> {
 
     if (result.vulnerabilities.length === 0) continue;
 
-    const severity = highestSeverity(result.vulnerabilities.map((v) => v.severity));
+    const top = highestSeverity(result.vulnerabilities);
     const confidence = determineConfidence(dep.direct, hasEvidence);
 
     findings.push({
       packageName: dep.name,
       version: dep.version,
       direct: dep.direct,
-      severity,
+      severity: top.severity,
+      severitySource: top.severitySource,
+      unknownReason: top.unknownReason,
       confidence,
       evidence: evidenceFiles,
       vulnerabilities: result.vulnerabilities,
@@ -78,9 +82,12 @@ function determineConfidence(direct: boolean, hasEvidence: boolean): Confidence 
   return 'unknown';
 }
 
-function highestSeverity(severities: Severity[]): Severity {
+function highestSeverity(
+  vulnerabilities: Array<{ severity: Severity; severitySource: SeveritySource; unknownReason?: UnknownReason }>
+): { severity: Severity; severitySource: SeveritySource; unknownReason?: UnknownReason } {
   const rank: Record<Severity, number> = { critical: 5, high: 4, medium: 3, low: 2, unknown: 1 };
-  return [...severities].sort((a, b) => rank[b] - rank[a])[0] ?? 'unknown';
+  const sorted = [...vulnerabilities].sort((a, b) => rank[b.severity] - rank[a.severity]);
+  return sorted[0] ?? { severity: 'unknown', severitySource: 'unknown', unknownReason: 'missing_score' };
 }
 
 function countBySeverity(findings: Finding[]): Record<Severity, number> {

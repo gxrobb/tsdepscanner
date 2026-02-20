@@ -1,7 +1,7 @@
 # secscan summary
 
 - Target: /Users/solinarmac/Documents/dev/depscanner/tsdepscanner/examples/vulnerable-demo
-- Generated: 2026-02-19T23:41:58.903Z
+- Generated: 2026-02-19T23:45:00.356Z
 - Dependencies: 2
 - Findings: 2
 

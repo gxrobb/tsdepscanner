@@ -1,5 +1,15 @@
 export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'unknown';
 export type Confidence = 'high' | 'medium' | 'low' | 'unknown';
+export type SeveritySource =
+  | 'osv_cvss'
+  | 'osv_label'
+  | 'osv_detail_cvss'
+  | 'osv_detail_label'
+  | 'alias_cvss'
+  | 'ghsa_cvss'
+  | 'ghsa_label'
+  | 'unknown';
+export type UnknownReason = 'missing_score' | 'lookup_failed';
 
 export interface DependencyNode {
   name: string;
@@ -16,6 +26,8 @@ export interface OsvVulnerability {
   summary?: string;
   aliases?: string[];
   severity: Severity;
+  severitySource: SeveritySource;
+  unknownReason?: UnknownReason;
   modified?: string;
 }
 
@@ -24,6 +36,8 @@ export interface Finding {
   version: string;
   direct: boolean;
   severity: Severity;
+  severitySource: SeveritySource;
+  unknownReason?: UnknownReason;
   confidence: Confidence;
   evidence: string[];
   vulnerabilities: OsvVulnerability[];

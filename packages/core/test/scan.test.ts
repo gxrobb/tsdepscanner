@@ -82,9 +82,11 @@ test('runScan computes severity/confidence and deterministic summary counts', as
 
     assert.equal(report.findings[0]?.packageName, 'lodash');
     assert.equal(report.findings[0]?.severity, 'critical');
+    assert.equal(report.findings[0]?.severitySource, 'osv_cvss');
     assert.equal(report.findings[0]?.confidence, 'high');
     assert.equal(report.findings[1]?.packageName, 'ansi-styles');
     assert.equal(report.findings[1]?.severity, 'medium');
+    assert.equal(report.findings[1]?.severitySource, 'osv_label');
     assert.equal(report.findings[1]?.confidence, 'low');
   } finally {
     globalThis.fetch = originalFetch;
@@ -123,4 +125,6 @@ test('runScan marks offline missing cache entries as unknown findings', async ()
   });
   assert.equal(report.findings.every((f) => f.source === 'unknown'), true);
   assert.equal(report.findings.every((f) => f.confidence === 'unknown'), true);
+  assert.equal(report.findings.every((f) => f.severitySource === 'unknown'), true);
+  assert.equal(report.findings.every((f) => f.unknownReason === 'lookup_failed'), true);
 });
