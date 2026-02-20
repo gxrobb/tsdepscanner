@@ -100,12 +100,23 @@ Flags:
 - `--offline` (cache only; missing entries become unknown)
 - `--unknown-as critical|high|medium|low|unknown` (default: `unknown`)
 - `--refresh-cache` (ignore cached advisory data and refetch)
+- `--list-findings none|critical-high|all` (default: `none`; prints finding details in terminal)
 
 Exit codes:
 
 - `0`: no findings at/above threshold
 - `1`: findings at/above threshold
 - `2`: tool error
+
+Examples:
+
+```bash
+# Print only critical/high finding details in CLI output
+bardcheck scan . --list-findings critical-high
+
+# Print all finding details in CLI output
+bardcheck scan . --list-findings all
+```
 
 ## Cache
 

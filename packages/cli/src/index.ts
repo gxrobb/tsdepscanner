@@ -19,6 +19,7 @@ export interface CliDeps {
 }
 
 type FailOn = Severity | 'none';
+type ListFindingsMode = 'none' | 'critical-high' | 'all';
 
 const defaultDeps: CliDeps = {
   mkdir,
@@ -75,6 +76,11 @@ export async function runCli(rawArgs: string[], deps: CliDeps = defaultDeps): Pr
           .option('refresh-cache', {
             type: 'boolean',
             default: false
+          })
+          .option('list-findings', {
+            choices: ['none', 'critical-high', 'all'] as const,
+            default: 'none',
+            describe: 'Print finding details in CLI output'
           }),
       async (argv) => {
         try {
@@ -112,6 +118,7 @@ export async function runCli(rawArgs: string[], deps: CliDeps = defaultDeps): Pr
             argv.failOn !== 'none' &&
             report.findings.some((f) => deps.shouldFail(argv.failOn as FailOn, f.severity));
           deps.stdout.write(buildCliSummary(report, String(argv.failOn), thresholdHit, useColor(deps.stdout)));
+          deps.stdout.write(buildFindingsList(report, argv.listFindings as ListFindingsMode, useColor(deps.stdout)));
 
           if (
             thresholdHit
@@ -160,6 +167,44 @@ function buildCliSummary(
     `threshold hit: ${thresholdHit ? colorize('yes', 'red', color) : colorize('no', 'green', color)}`
   ];
   return `${lines.join('\n')}\n`;
+}
+
+function buildFindingsList(
+  report: Awaited<ReturnType<typeof core.runScan>>,
+  mode: ListFindingsMode,
+  color: boolean
+): string {
+  if (mode === 'none') return '';
+
+  const filtered =
+    mode === 'all'
+      ? report.findings
+      : report.findings.filter((f) => f.severity === 'critical' || f.severity === 'high');
+
+  if (filtered.length === 0) {
+    return `\n${colorize('finding details', 'cyan', color)}\n(no matching findings)\n`;
+  }
+
+  const lines = ['', colorize('finding details', 'cyan', color)];
+  for (const finding of filtered) {
+    const vulnIds = finding.vulnerabilities.slice(0, 3).map((v) => v.id).join(', ');
+    const evidenceCount = finding.evidence.length;
+    const unknownReason = finding.unknownReason ? ` unknown-reason=${finding.unknownReason}` : '';
+    lines.push(
+      `- ${colorize(finding.severity, severityColor(finding.severity), color)} ${finding.packageName}@${finding.version}` +
+        ` confidence=${finding.confidence} direct=${finding.direct ? 'yes' : 'no'} evidence=${evidenceCount}` +
+        ` source=${finding.source}${unknownReason} ids=${vulnIds || 'n/a'}`
+    );
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+function severityColor(severity: Severity): 'magenta' | 'red' | 'yellow' | 'green' | 'gray' {
+  if (severity === 'critical') return 'magenta';
+  if (severity === 'high') return 'red';
+  if (severity === 'medium') return 'yellow';
+  if (severity === 'low') return 'green';
+  return 'gray';
 }
 
 function useColor(stdout: { isTTY?: boolean }): boolean {
