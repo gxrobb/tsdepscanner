@@ -2,7 +2,6 @@ node_modules
 dist
 .bardcheck
 coverage
-pnpm-lock.yaml
 .artifacts
 
 # Keep demo cache fixture tracked for deterministic offline scans.
