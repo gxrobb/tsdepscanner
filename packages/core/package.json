@@ -10,7 +10,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "eslint src test --ext .ts",
-    "test": "node --test --import tsx test/**/*.test.ts"
+    "test": "node --test --import tsx test/*.test.ts"
   },
   "dependencies": {
     "fast-glob": "^3.3.3",
