@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install
+        run: corepack pnpm install
+
+      - name: Build
+        run: corepack pnpm build
+
+      - name: Bump bardcheck patch version
+        run: npm version patch --prefix packages/cli --no-git-tag-version
+
+      - name: Read new version
+        id: version
+        run: echo "value=$(node -p \"require('./packages/cli/package.json').version\")" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and tag release
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add packages/cli/package.json
+          git commit -m "chore(release): bardcheck v${{ steps.version.outputs.value }} [skip ci]"
+          git tag "v${{ steps.version.outputs.value }}"
+          git push origin main --follow-tags
+
+      - name: Publish bardcheck
+        run: npm publish --prefix packages/cli --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

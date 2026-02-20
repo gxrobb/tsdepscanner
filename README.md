@@ -176,4 +176,15 @@ jobs:
 3. Run `corepack pnpm release:dry-run`
 4. Commit release notes in `CHANGELOG.md`
 5. Tag `v0.1.0` and push tag
+
+### Automated release on `main`
+
+`/Users/solinarmac/Documents/dev/depscanner/tsdepscanner/.github/workflows/release.yml` is configured to:
+- run on pushes to `main`
+- bump `packages/cli/package.json` patch version
+- commit the bump, create a `vX.Y.Z` tag, push both
+- publish `bardcheck` to npm
+
+Required repository secret:
+- `NPM_TOKEN`: npm automation token with publish access to `bardcheck`
 ```
