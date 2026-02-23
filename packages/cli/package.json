@@ -1,17 +1,17 @@
 {
-  "name": "bardcheck",
   "version": "0.1.3",
+  "name": "bardscan",
   "type": "module",
   "bin": {
-    "bardcheck": "dist/index.js"
+    "bardscan": "dist/index.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "eslint src test --ext .ts",
-    "test": "corepack pnpm --filter @bardcheck/core build && node --test --import tsx test/*.test.ts"
+    "test": "corepack pnpm --filter @bardscan/core build && node --test --import tsx test/*.test.ts"
   },
   "dependencies": {
-    "@bardcheck/core": "workspace:*",
+    "@bardscan/core": "workspace:*",
     "yargs": "^17.7.2"
   },
   "devDependencies": {

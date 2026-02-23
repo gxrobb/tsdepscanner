@@ -1,0 +1,7 @@
+[
+  {
+    "id": "GHSA-5rrq-pxf6-6jx5",
+    "summary": "Prototype pollution in node-forge util.setPath",
+    "severity": "low"
+  }
+]

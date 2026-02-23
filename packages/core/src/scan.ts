@@ -3,12 +3,29 @@ import { collectEvidence } from './evidence.js';
 import { parsePackageLock } from './lock-parser.js';
 import { OsvClient } from './osv-client.js';
 import { sortFindings } from './report.js';
-import { Confidence, Finding, ScanOptions, ScanReport, Severity, SeveritySource, UnknownReason } from './types.js';
+import {
+  Confidence,
+  DbUpdateOptions,
+  DbUpdateReport,
+  Finding,
+  ScanOptions,
+  ScanReport,
+  Severity,
+  SeveritySource,
+  UnknownReason
+} from './types.js';
 
 export async function runScan(options: ScanOptions): Promise<ScanReport> {
   const parsed = await parsePackageLock(options.projectPath);
-  const evidence = await collectEvidence(options.projectPath);
-  const osv = new OsvClient(path.join(options.outDir, '.cache', 'osv'), options.offline, options.refreshCache);
+  const evidenceMode = options.evidenceMode ?? 'imports';
+  const evidence =
+    evidenceMode === 'none' ? { scannedFiles: 0, byPackage: new Map<string, string[]>() } : await collectEvidence(options.projectPath);
+  const osv = new OsvClient(path.join(options.outDir, '.cache', 'osv'), {
+    offline: options.offline,
+    refreshCache: options.refreshCache,
+    osvUrl: options.osvUrl,
+    enableNetworkFallbacks: options.enableNetworkFallbacks
+  });
   const osvResults = await osv.batchQuery(parsed.dependencies.map((d) => ({ name: d.name, version: d.version })));
 
   const findings: Finding[] = [];
@@ -77,6 +94,30 @@ export async function runScan(options: ScanOptions): Promise<ScanReport> {
   };
 
   return report;
+}
+
+export async function updateAdvisoryDb(options: DbUpdateOptions): Promise<DbUpdateReport> {
+  const parsed = await parsePackageLock(options.projectPath);
+  const osv = new OsvClient(path.join(options.outDir, '.cache', 'osv'), {
+    offline: false,
+    refreshCache: options.refreshCache,
+    osvUrl: options.osvUrl,
+    enableNetworkFallbacks: options.enableNetworkFallbacks
+  });
+  const results = await osv.batchQuery(parsed.dependencies.map((d) => ({ name: d.name, version: d.version })));
+
+  const bySource = { osv: 0, cache: 0, unknown: 0 };
+  for (const result of results.values()) {
+    bySource[result.source] += 1;
+  }
+
+  return {
+    projectPath: options.projectPath,
+    generatedAt: new Date().toISOString(),
+    dependencyCount: parsed.dependencies.length,
+    queriedCount: results.size,
+    bySource
+  };
 }
 
 function determineConfidence(direct: boolean, hasEvidence: boolean): Confidence {

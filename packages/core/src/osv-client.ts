@@ -50,15 +50,43 @@ export interface OsvLookupResult {
 }
 
 export class OsvClient {
+  private readonly cacheDir: string;
+  private readonly offline: boolean;
+  private readonly refreshCache: boolean;
+  private readonly osvUrl: string;
+  private readonly enableNetworkFallbacks: boolean;
+
   constructor(
-    private readonly cacheDir: string,
-    private readonly offline: boolean,
-    private readonly refreshCache: boolean = false
-  ) {}
+    cacheDir: string,
+    options:
+      | boolean
+      | {
+          offline: boolean;
+          refreshCache?: boolean;
+          osvUrl?: string;
+          enableNetworkFallbacks?: boolean;
+        },
+    refreshCache: boolean = false
+  ) {
+    this.cacheDir = cacheDir;
+    if (typeof options === 'boolean') {
+      this.offline = options;
+      this.refreshCache = refreshCache;
+      this.osvUrl = 'https://api.osv.dev';
+      this.enableNetworkFallbacks = true;
+      return;
+    }
+    this.offline = options.offline;
+    this.refreshCache = options.refreshCache ?? false;
+    this.osvUrl = (options.osvUrl ?? 'https://api.osv.dev').replace(/\/+$/, '');
+    this.enableNetworkFallbacks = options.enableNetworkFallbacks ?? true;
+  }
 
   async batchQuery(packages: Array<{ name: string; version: string }>): Promise<Map<string, OsvLookupResult>> {
     await mkdir(this.cacheDir, { recursive: true });
-    await this.pruneExpiredCache(this.cacheDir);
+    if (!this.offline) {
+      await this.pruneExpiredCache(this.cacheDir);
+    }
     const response = new Map<string, OsvLookupResult>();
     const toFetch: Array<{ name: string; version: string }> = [];
 
@@ -100,7 +128,7 @@ export class OsvClient {
     const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
     try {
-      const res = await fetch('https://api.osv.dev/v1/querybatch', {
+      const res = await fetch(`${this.osvUrl}/v1/querybatch`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
@@ -129,7 +157,7 @@ export class OsvClient {
         map.set(`${pkg.name}@${pkg.version}`, vulns);
       }
 
-      if (unknownById.size > 0) {
+      if (unknownById.size > 0 && this.enableNetworkFallbacks) {
         const enriched = await this.enrichUnknownVulns(
           [...unknownById.entries()].map(([id, aliases]) => ({ id, aliases }))
         );
@@ -211,7 +239,7 @@ export class OsvClient {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     try {
-      const res = await fetch(`https://api.osv.dev/v1/vulns/${encodeURIComponent(id)}`, {
+      const res = await fetch(`${this.osvUrl}/v1/vulns/${encodeURIComponent(id)}`, {
         method: 'GET',
         signal: controller.signal
       });
@@ -303,7 +331,7 @@ export class OsvClient {
         method: 'GET',
         headers: {
           Accept: 'application/vnd.github+json',
-          'User-Agent': 'bardcheck'
+          'User-Agent': 'bardscan'
         },
         signal: controller.signal
       });

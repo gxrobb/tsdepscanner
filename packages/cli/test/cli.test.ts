@@ -40,7 +40,7 @@ function makeReport(severity: 'critical' | 'high' | 'medium' | 'low' | 'unknown'
 }
 
 test('runCli writes only JSON report and returns exit code 1 on threshold match', async () => {
-  const outDir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-cli-json-'));
+  const outDir = await mkdtemp(path.join(os.tmpdir(), 'bardscan-cli-json-'));
   const writes: string[] = [];
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -65,12 +65,12 @@ test('runCli writes only JSON report and returns exit code 1 on threshold match'
   assert.equal(writes[0], path.resolve(outDir, 'report.json'));
   assert.match(stdout.join(''), /report\.json/);
   assert.doesNotMatch(stdout.join(''), /report\.md/);
-  assert.match(stdout.join(''), /bardcheck summary/);
+  assert.match(stdout.join(''), /bardscan summary/);
   assert.match(stdout.join(''), /threshold hit: yes/);
 });
 
 test('runCli writes only Markdown report and returns exit code 0 for fail-on none', async () => {
-  const outDir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-cli-md-'));
+  const outDir = await mkdtemp(path.join(os.tmpdir(), 'bardscan-cli-md-'));
   const writes: string[] = [];
   const stdout: string[] = [];
   const deps: CliDeps = {
@@ -93,12 +93,12 @@ test('runCli writes only Markdown report and returns exit code 0 for fail-on non
   assert.equal(writes[0], path.resolve(outDir, 'report.md'));
   assert.match(stdout.join(''), /report\.md/);
   assert.doesNotMatch(stdout.join(''), /report\.json/);
-  assert.match(stdout.join(''), /bardcheck summary/);
+  assert.match(stdout.join(''), /bardscan summary/);
   assert.match(stdout.join(''), /threshold hit: no/);
 });
 
 test('runCli returns exit code 2 and writes to stderr on tool errors', async () => {
-  const outDir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-cli-err-'));
+  const outDir = await mkdtemp(path.join(os.tmpdir(), 'bardscan-cli-err-'));
   const stderr: string[] = [];
   const deps: CliDeps = {
     mkdir: async () => undefined,
@@ -120,7 +120,7 @@ test('runCli returns exit code 2 and writes to stderr on tool errors', async () 
 });
 
 test('runCli writes SARIF report when format is sarif', async () => {
-  const outDir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-cli-sarif-'));
+  const outDir = await mkdtemp(path.join(os.tmpdir(), 'bardscan-cli-sarif-'));
   const writes: string[] = [];
   const deps: CliDeps = {
     mkdir: async () => undefined,
@@ -129,7 +129,7 @@ test('runCli writes SARIF report when format is sarif', async () => {
     },
     runScan: async () => makeReport('medium'),
     buildMarkdownReport: () => '# report',
-    buildSarifReport: () => ({ version: '2.1.0', runs: [{ tool: { driver: { name: 'bardcheck' } }, results: [] }] }),
+    buildSarifReport: () => ({ version: '2.1.0', runs: [{ tool: { driver: { name: 'bardscan' } }, results: [] }] }),
     shouldFail: () => false,
     stdout: { write: () => undefined },
     stderr: { write: () => undefined }
@@ -142,7 +142,7 @@ test('runCli writes SARIF report when format is sarif', async () => {
 });
 
 test('runCli colorizes summary output when stdout is a TTY', async () => {
-  const outDir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-cli-color-'));
+  const outDir = await mkdtemp(path.join(os.tmpdir(), 'bardscan-cli-color-'));
   const stdout: string[] = [];
   const previousNoColor = process.env.NO_COLOR;
   delete process.env.NO_COLOR;
@@ -161,7 +161,7 @@ test('runCli colorizes summary output when stdout is a TTY', async () => {
     const code = await runCli(['scan', '.', '--format', 'json', '--out-dir', outDir, '--fail-on', 'high'], deps);
     assert.equal(code, 1);
     const output = stdout.join('');
-    assert.equal(output.includes('\u001b[36mbardcheck summary\u001b[0m'), true);
+    assert.equal(output.includes('\u001b[36mbardscan summary\u001b[0m'), true);
     assert.equal(output.includes('\u001b[31myes\u001b[0m'), true);
   } finally {
     if (previousNoColor === undefined) {
@@ -173,7 +173,7 @@ test('runCli colorizes summary output when stdout is a TTY', async () => {
 });
 
 test('runCli lists critical/high findings when list mode is critical-high', async () => {
-  const outDir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-cli-list-hi-'));
+  const outDir = await mkdtemp(path.join(os.tmpdir(), 'bardscan-cli-list-hi-'));
   const stdout: string[] = [];
   const deps: CliDeps = {
     mkdir: async () => undefined,
@@ -233,7 +233,7 @@ test('runCli lists critical/high findings when list mode is critical-high', asyn
 });
 
 test('runCli lists medium/high/critical findings when list mode is medium-up', async () => {
-  const outDir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-cli-list-med-'));
+  const outDir = await mkdtemp(path.join(os.tmpdir(), 'bardscan-cli-list-med-'));
   const stdout: string[] = [];
   const deps: CliDeps = {
     mkdir: async () => undefined,
@@ -304,7 +304,7 @@ test('runCli lists medium/high/critical findings when list mode is medium-up', a
 });
 
 test('runCli writes filtered findings JSON when findings-json is set', async () => {
-  const outDir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-cli-findings-json-'));
+  const outDir = await mkdtemp(path.join(os.tmpdir(), 'bardscan-cli-findings-json-'));
   const writes: Array<{ filePath: string; content: string }> = [];
   const deps: CliDeps = {
     mkdir: async () => undefined,

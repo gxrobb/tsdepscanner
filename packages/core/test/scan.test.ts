@@ -6,8 +6,8 @@ import test from 'node:test';
 import { runScan } from '../src/scan.js';
 
 test('runScan computes severity/confidence and deterministic summary counts', async () => {
-  const projectDir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-project-'));
-  const outDir = path.join(projectDir, '.bardcheck');
+  const projectDir = await mkdtemp(path.join(os.tmpdir(), 'bardscan-project-'));
+  const outDir = path.join(projectDir, '.bardscan');
   await mkdir(path.join(projectDir, 'src'), { recursive: true });
 
   const lock = {
@@ -96,8 +96,8 @@ test('runScan computes severity/confidence and deterministic summary counts', as
 });
 
 test('runScan marks offline missing cache entries as unknown findings', async () => {
-  const projectDir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-offline-'));
-  const outDir = path.join(projectDir, '.bardcheck');
+  const projectDir = await mkdtemp(path.join(os.tmpdir(), 'bardscan-offline-'));
+  const outDir = path.join(projectDir, '.bardscan');
 
   const lock = {
     lockfileVersion: 2,
@@ -134,8 +134,8 @@ test('runScan marks offline missing cache entries as unknown findings', async ()
 });
 
 test('runScan applies unknownAs policy for unresolved findings', async () => {
-  const projectDir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-policy-'));
-  const outDir = path.join(projectDir, '.bardcheck');
+  const projectDir = await mkdtemp(path.join(os.tmpdir(), 'bardscan-policy-'));
+  const outDir = path.join(projectDir, '.bardscan');
 
   const lock = {
     lockfileVersion: 2,
