@@ -3,7 +3,7 @@ import { stableSortBy } from './utils.js';
 
 export function buildMarkdownReport(report: ScanReport): string {
   const lines = [
-    '# bardcheck summary',
+    '# bardscan summary',
     '',
     `- Target: ${report.targetPath}`,
     `- Generated: ${report.generatedAt}`,
@@ -92,7 +92,7 @@ export function buildSarifReport(report: ScanReport): object {
       {
         tool: {
           driver: {
-            name: 'bardcheck',
+            name: 'bardscan',
             informationUri: 'https://github.com',
             rules: [...rules.values()]
           }
@@ -100,6 +100,17 @@ export function buildSarifReport(report: ScanReport): object {
         results
       }
     ]
+  };
+}
+
+export function redactReportPaths(report: ScanReport): ScanReport {
+  return {
+    ...report,
+    targetPath: '[redacted]',
+    findings: report.findings.map((finding) => ({
+      ...finding,
+      evidence: finding.evidence.map(() => '[redacted]')
+    }))
   };
 }
 

@@ -18,7 +18,7 @@ const fixtures = [
 
 for (const fixture of fixtures) {
   test(`runScan supports ${fixture.name} fixture project`, async () => {
-    const outDir = await mkdtemp(path.join(os.tmpdir(), `bardcheck-${fixture.name}-`));
+    const outDir = await mkdtemp(path.join(os.tmpdir(), `bardscan-${fixture.name}-`));
     const report = await runScan({
       projectPath: fixture.projectPath,
       outDir,

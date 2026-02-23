@@ -19,7 +19,7 @@ test('buildMarkdownReport renders empty findings message', () => {
   };
 
   const markdown = buildMarkdownReport(report);
-  assert.match(markdown, /# bardcheck summary/);
+  assert.match(markdown, /# bardscan summary/);
   assert.match(markdown, /No vulnerable dependencies found\./);
 });
 

@@ -1,5 +1,5 @@
 {
-  "name": "bardcheck-monorepo",
+  "name": "bardscan-monorepo",
   "private": true,
   "version": "0.1.0",
   "packageManager": "pnpm@9.0.0",
@@ -10,7 +10,7 @@
     "build": "corepack pnpm -r build",
     "lint": "corepack pnpm -r lint",
     "test": "corepack pnpm -r test",
-    "demo:scan": "node ./packages/cli/dist/index.js scan ./examples/vulnerable-demo --format both --out-dir ./examples/vulnerable-demo/.bardcheck --fail-on none --offline",
+    "demo:scan": "node ./packages/cli/dist/index.js scan ./examples/vulnerable-demo --format both --out-dir ./examples/vulnerable-demo/.bardscan --fail-on none --offline",
     "release:dry-run": "corepack pnpm --dir packages/cli pack --pack-destination ../../.artifacts",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

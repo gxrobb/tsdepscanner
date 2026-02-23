@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { parsePackageLock } from '../src/lock-parser.js';
 
 test('parsePackageLock resolves direct and transitive dependencies for lockfile v2', async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-'));
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardscan-'));
   const lock = {
     lockfileVersion: 2,
     packages: {
@@ -27,7 +27,7 @@ test('parsePackageLock resolves direct and transitive dependencies for lockfile 
 });
 
 test('parsePackageLock correctly handles scoped package paths and direct classification', async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-'));
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardscan-'));
   const lock = {
     lockfileVersion: 2,
     packages: {
@@ -48,7 +48,7 @@ test('parsePackageLock correctly handles scoped package paths and direct classif
 });
 
 test('parsePackageLock parses pnpm-lock.yaml with direct dependency classification', async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-'));
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardscan-'));
   await writeFile(
     path.join(dir, 'package.json'),
     JSON.stringify({
@@ -80,7 +80,7 @@ test('parsePackageLock parses pnpm-lock.yaml with direct dependency classificati
 });
 
 test('parsePackageLock treats all pnpm importer dependencies as direct (workspace)', async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-'));
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardscan-'));
   await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'root' }));
   await writeFile(
     path.join(dir, 'pnpm-lock.yaml'),
@@ -109,7 +109,7 @@ test('parsePackageLock treats all pnpm importer dependencies as direct (workspac
 });
 
 test('parsePackageLock parses yarn.lock with direct dependency classification', async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-'));
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardscan-'));
   await writeFile(
     path.join(dir, 'package.json'),
     JSON.stringify({
@@ -133,7 +133,7 @@ test('parsePackageLock parses yarn.lock with direct dependency classification', 
 });
 
 test('parsePackageLock marks workspace package dependencies as direct for yarn projects', async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-'));
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardscan-'));
   await mkdir(path.join(dir, 'packages', 'app'), { recursive: true });
   await writeFile(
     path.join(dir, 'package.json'),
@@ -150,7 +150,7 @@ test('parsePackageLock marks workspace package dependencies as direct for yarn p
 });
 
 test('parsePackageLock falls back to package.json direct deps for bun lockfiles', async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-'));
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardscan-'));
   await writeFile(
     path.join(dir, 'package.json'),
     JSON.stringify({
@@ -173,7 +173,7 @@ test('parsePackageLock falls back to package.json direct deps for bun lockfiles'
 });
 
 test('parsePackageLock includes bun workspace dependencies as direct', async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardcheck-'));
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bardscan-'));
   await mkdir(path.join(dir, 'packages', 'web'), { recursive: true });
   await writeFile(path.join(dir, 'package.json'), JSON.stringify({ workspaces: ['packages/*'] }));
   await writeFile(path.join(dir, 'packages', 'web', 'package.json'), JSON.stringify({ dependencies: { next: '^14.0.0' } }));

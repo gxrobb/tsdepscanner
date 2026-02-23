@@ -1,4 +1,4 @@
-# bardcheck summary
+# bardscan summary
 
 - Target: /Users/solinarmac/Documents/dev/depscanner/tsdepscanner/examples/vulnerable-demo
 - Generated: 2026-02-19T23:45:00.356Z

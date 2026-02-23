@@ -12,6 +12,7 @@ export type SeveritySource =
   | 'policy_override'
   | 'unknown';
 export type UnknownReason = 'missing_score' | 'lookup_failed';
+export type EvidenceMode = 'none' | 'imports';
 
 export interface DependencyNode {
   name: string;
@@ -69,4 +70,27 @@ export interface ScanOptions {
   offline: boolean;
   unknownAs: Severity;
   refreshCache: boolean;
+  osvUrl?: string;
+  enableNetworkFallbacks?: boolean;
+  evidenceMode?: EvidenceMode;
+}
+
+export interface DbUpdateOptions {
+  projectPath: string;
+  outDir: string;
+  refreshCache: boolean;
+  osvUrl?: string;
+  enableNetworkFallbacks?: boolean;
+}
+
+export interface DbUpdateReport {
+  projectPath: string;
+  generatedAt: string;
+  dependencyCount: number;
+  queriedCount: number;
+  bySource: {
+    osv: number;
+    cache: number;
+    unknown: number;
+  };
 }

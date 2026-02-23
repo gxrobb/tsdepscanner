@@ -32,7 +32,7 @@ importers:
 
   packages/cli:
     dependencies:
-      '@bardcheck/core':
+      '@bardscan/core':
         specifier: workspace:*
         version: link:../core
       yargs:

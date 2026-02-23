@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readdir, stat, utimes } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -7,9 +8,10 @@ import { runScan } from '../src/scan.js';
 const thisDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(thisDir, '../../..');
 const demoPath = path.join(repoRoot, 'examples', 'vulnerable-demo');
-const demoOutDir = path.join(demoPath, '.bardcheck');
+const demoOutDir = path.join(demoPath, '.bardscan');
 
 test('demo fixture produces deterministic offline findings from seeded cache', async () => {
+  await touchFiles(path.join(demoOutDir, '.cache'));
   const report = await runScan({
     projectPath: demoPath,
     outDir: demoOutDir,
@@ -43,3 +45,24 @@ test('demo fixture produces deterministic offline findings from seeded cache', a
   assert.equal(report.findings[1]?.severity, 'low');
   assert.equal(report.findings[1]?.source, 'cache');
 });
+
+async function touchFiles(dir: string): Promise<void> {
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  const now = new Date();
+  await Promise.all(
+    entries.map(async (entry) => {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await touchFiles(fullPath);
+        return;
+      }
+      const info = await stat(fullPath);
+      await utimes(fullPath, info.atime, now);
+    })
+  );
+}
