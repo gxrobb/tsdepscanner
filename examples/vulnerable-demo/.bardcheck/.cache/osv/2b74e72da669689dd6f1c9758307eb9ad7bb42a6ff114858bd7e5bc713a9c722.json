@@ -1,7 +1,0 @@
-[
-  {
-    "id": "GHSA-35jh-r3h4-6jhm",
-    "summary": "Command injection in lodash template helper",
-    "severity": "medium"
-  }
-]

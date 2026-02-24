@@ -7,7 +7,7 @@
 `bardscan` is secure-by-default:
 
 - `scan` is offline by default (no network)
-- online lookups require explicit opt-in (`--online`)
+- `scan` is offline-only; advisory fetching happens via `db update`
 - advisory refresh is split into a dedicated command (`db update`)
 - strict privacy mode is the default (`--privacy strict`)
 
@@ -31,6 +31,9 @@ node ./packages/cli/dist/index.js db update .
 
 # 2) scan using cache only (default behavior)
 node ./packages/cli/dist/index.js scan . --format both
+
+# optional one-command convenience (update + offline scan)
+node ./packages/cli/dist/index.js scan . --update-db --format both
 ```
 
 Package-run examples:
@@ -56,11 +59,13 @@ Flags:
 - `--format json|md|sarif|both` (default: `both`)
 - `--out-dir <dir>` (default: `/tmp/bardscan`)
 - `--fail-on critical|high|medium|low|none` (default: `high`)
+- `--fail-on-unknown` (default: `false`; fail when unresolved findings exist)
 - `--privacy strict|standard` (default: `strict`)
-- `--online` (opt in to live network queries during scan)
+- `--online` (deprecated; scan is offline-only and will error)
 - `--offline` (force cache-only scanning)
 - `--unknown-as critical|high|medium|low|unknown` (default: `unknown`)
 - `--refresh-cache` (bypass cache reads)
+- `--update-db` (run `db update` before scan)
 - `--osv-url <url>` (custom OSV API base URL)
 - `--fallback-calls` (allow extra network lookups for unresolved severities)
 - `--redact-paths` (redact target/evidence paths in report outputs)
@@ -85,10 +90,11 @@ Flags:
 - `strict` (default): offline, no fallback calls, path redaction on, evidence defaults to `none`, telemetry must be off
 - `standard`: offline by default, fallback calls enabled by default, path redaction off, evidence defaults to `imports`
 
-If you need live freshness at scan-time, use:
+To refresh advisory freshness:
 
 ```bash
-bardscan scan . --privacy standard --online
+bardscan db update .
+bardscan scan .
 ```
 
 ## Data Handling

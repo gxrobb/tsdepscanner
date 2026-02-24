@@ -379,3 +379,215 @@ test('runCli writes filtered findings JSON when findings-json is set', async () 
   assert.equal(parsed.length, 1);
   assert.equal(parsed[0]?.packageName, 'high-pkg');
 });
+
+test('runCli strict defaults enforce offline scan settings and redacted output', async () => {
+  const outDir = await mkdtemp(path.join(os.tmpdir(), 'bardscan-cli-strict-defaults-'));
+  const writes: Array<{ filePath: string; content: string }> = [];
+  let captured:
+    | {
+        offline: boolean;
+        enableNetworkFallbacks: boolean | undefined;
+        evidenceMode: 'none' | 'imports' | undefined;
+      }
+    | undefined;
+  const deps: CliDeps = {
+    mkdir: async () => undefined,
+    writeFile: async (filePath, content) => {
+      writes.push({ filePath: String(filePath), content: String(content) });
+    },
+    runScan: async (options) => {
+      captured = {
+        offline: options.offline,
+        enableNetworkFallbacks: options.enableNetworkFallbacks,
+        evidenceMode: options.evidenceMode
+      };
+      return makeReport('low');
+    },
+    updateAdvisoryDb: async () => ({
+      projectPath: '/tmp/project',
+      generatedAt: '2026-02-19T00:00:00.000Z',
+      dependencyCount: 0,
+      queriedCount: 0,
+      bySource: { osv: 0, cache: 0, unknown: 0 }
+    }),
+    buildMarkdownReport: () => '# report',
+    buildSarifReport: () => ({ version: '2.1.0', runs: [] }),
+    shouldFail: () => false,
+    redactReportPaths: (report) => ({
+      ...report,
+      targetPath: '[redacted]',
+      findings: report.findings.map((f) => ({ ...f, evidence: f.evidence.map(() => '[redacted]') }))
+    }),
+    stdout: { write: () => undefined },
+    stderr: { write: () => undefined }
+  };
+
+  const code = await runCli(['scan', '.', '--format', 'json', '--out-dir', outDir, '--fail-on', 'none'], deps);
+  assert.equal(code, 0);
+  assert.equal(captured?.offline, true);
+  assert.equal(captured?.enableNetworkFallbacks, false);
+  assert.equal(captured?.evidenceMode, 'none');
+  assert.match(writes[0]?.content ?? '', /"\[redacted\]"/);
+  assert.doesNotMatch(writes[0]?.content ?? '', /\/tmp\/project/);
+});
+
+test('runCli fail-on-unknown returns exit code 1 when unresolved findings exist', async () => {
+  const outDir = await mkdtemp(path.join(os.tmpdir(), 'bardscan-cli-fail-unknown-'));
+  const deps: CliDeps = {
+    mkdir: async () => undefined,
+    writeFile: async () => undefined,
+    runScan: async () => ({
+      ...makeReport('unknown'),
+      summary: {
+        dependencyCount: 1,
+        scannedFiles: 1,
+        findingsCount: 1,
+        bySeverity: { critical: 0, high: 0, medium: 0, low: 0, unknown: 1 },
+        byConfidence: { high: 0, medium: 0, low: 0, unknown: 1 }
+      },
+      findings: [
+        {
+          ...makeReport('unknown').findings[0],
+          unknownReason: 'lookup_failed'
+        }
+      ]
+    }),
+    updateAdvisoryDb: async () => ({
+      projectPath: '/tmp/project',
+      generatedAt: '2026-02-19T00:00:00.000Z',
+      dependencyCount: 0,
+      queriedCount: 0,
+      bySource: { osv: 0, cache: 0, unknown: 0 }
+    }),
+    buildMarkdownReport: () => '# report',
+    buildSarifReport: () => ({ version: '2.1.0', runs: [] }),
+    shouldFail: () => false,
+    redactReportPaths: (report) => report,
+    stdout: { write: () => undefined },
+    stderr: { write: () => undefined }
+  };
+
+  const code = await runCli(
+    ['scan', '.', '--format', 'json', '--out-dir', outDir, '--fail-on', 'none', '--fail-on-unknown'],
+    deps
+  );
+  assert.equal(code, 1);
+});
+
+test('runCli db update prints update summary and returns exit code 0', async () => {
+  const outDir = await mkdtemp(path.join(os.tmpdir(), 'bardscan-cli-db-update-'));
+  const stdout: string[] = [];
+  const deps: CliDeps = {
+    mkdir: async () => undefined,
+    writeFile: async () => undefined,
+    runScan: async () => makeReport('low'),
+    updateAdvisoryDb: async () => ({
+      projectPath: '/tmp/project',
+      generatedAt: '2026-02-19T00:00:00.000Z',
+      dependencyCount: 3,
+      queriedCount: 3,
+      bySource: { osv: 2, cache: 1, unknown: 0 }
+    }),
+    buildMarkdownReport: () => '# report',
+    buildSarifReport: () => ({ version: '2.1.0', runs: [] }),
+    shouldFail: () => false,
+    redactReportPaths: (report) => report,
+    stdout: { write: (text: string) => stdout.push(text) },
+    stderr: { write: () => undefined }
+  };
+
+  const code = await runCli(['db', 'update', '.', '--out-dir', outDir], deps);
+  assert.equal(code, 0);
+  assert.match(stdout.join(''), /bardscan db update/);
+  assert.match(stdout.join(''), /dependencies: 3/);
+  assert.match(stdout.join(''), /sources: osv=2 cache=1 unknown=0/);
+});
+
+test('runCli db update returns exit code 2 on updater error', async () => {
+  const outDir = await mkdtemp(path.join(os.tmpdir(), 'bardscan-cli-db-update-err-'));
+  const stderr: string[] = [];
+  const deps: CliDeps = {
+    mkdir: async () => undefined,
+    writeFile: async () => undefined,
+    runScan: async () => makeReport('low'),
+    updateAdvisoryDb: async () => {
+      throw new Error('update failed');
+    },
+    buildMarkdownReport: () => '# report',
+    buildSarifReport: () => ({ version: '2.1.0', runs: [] }),
+    shouldFail: () => false,
+    redactReportPaths: (report) => report,
+    stdout: { write: () => undefined },
+    stderr: { write: (text: string) => stderr.push(text) }
+  };
+
+  const code = await runCli(['db', 'update', '.', '--out-dir', outDir], deps);
+  assert.equal(code, 2);
+  assert.match(stderr.join(''), /update failed/);
+});
+
+test('runCli rejects --online for scan and instructs using db update', async () => {
+  const outDir = await mkdtemp(path.join(os.tmpdir(), 'bardscan-cli-online-reject-'));
+  const stderr: string[] = [];
+  const deps: CliDeps = {
+    mkdir: async () => undefined,
+    writeFile: async () => undefined,
+    runScan: async () => makeReport('low'),
+    updateAdvisoryDb: async () => ({
+      projectPath: '/tmp/project',
+      generatedAt: '2026-02-19T00:00:00.000Z',
+      dependencyCount: 0,
+      queriedCount: 0,
+      bySource: { osv: 0, cache: 0, unknown: 0 }
+    }),
+    buildMarkdownReport: () => '# report',
+    buildSarifReport: () => ({ version: '2.1.0', runs: [] }),
+    shouldFail: () => false,
+    redactReportPaths: (report) => report,
+    stdout: { write: () => undefined },
+    stderr: { write: (text: string) => stderr.push(text) }
+  };
+
+  const code = await runCli(['scan', '.', '--online', '--out-dir', outDir], deps);
+  assert.equal(code, 2);
+  assert.match(stderr.join(''), /scan is offline-only/);
+  assert.match(stderr.join(''), /db update/);
+});
+
+test('runCli can run db update and scan in one command with --update-db', async () => {
+  const outDir = await mkdtemp(path.join(os.tmpdir(), 'bardscan-cli-update-db-scan-'));
+  const stdout: string[] = [];
+  let updateCalled = 0;
+  let scanCalled = 0;
+  const deps: CliDeps = {
+    mkdir: async () => undefined,
+    writeFile: async () => undefined,
+    runScan: async () => {
+      scanCalled += 1;
+      return makeReport('low');
+    },
+    updateAdvisoryDb: async () => {
+      updateCalled += 1;
+      return {
+        projectPath: '/tmp/project',
+        generatedAt: '2026-02-19T00:00:00.000Z',
+        dependencyCount: 1,
+        queriedCount: 1,
+        bySource: { osv: 1, cache: 0, unknown: 0 }
+      };
+    },
+    buildMarkdownReport: () => '# report',
+    buildSarifReport: () => ({ version: '2.1.0', runs: [] }),
+    shouldFail: () => false,
+    redactReportPaths: (report) => report,
+    stdout: { write: (text: string) => stdout.push(text) },
+    stderr: { write: () => undefined }
+  };
+
+  const code = await runCli(['scan', '.', '--update-db', '--out-dir', outDir, '--format', 'json', '--fail-on', 'none'], deps);
+  assert.equal(code, 0);
+  assert.equal(updateCalled, 1);
+  assert.equal(scanCalled, 1);
+  assert.match(stdout.join(''), /bardscan db update/);
+  assert.match(stdout.join(''), /bardscan summary/);
+});

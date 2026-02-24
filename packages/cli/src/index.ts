@@ -72,6 +72,11 @@ export async function runCli(rawArgs: string[], deps: CliDeps = defaultDeps): Pr
             choices: ['critical', 'high', 'medium', 'low', 'none'] as const,
             default: 'high'
           })
+          .option('fail-on-unknown', {
+            type: 'boolean',
+            default: false,
+            describe: 'Fail when unresolved findings exist (unknown severity/lookup)'
+          })
           .option('privacy', {
             choices: ['strict', 'standard'] as const,
             default: 'strict',
@@ -80,7 +85,7 @@ export async function runCli(rawArgs: string[], deps: CliDeps = defaultDeps): Pr
           .option('online', {
             type: 'boolean',
             default: false,
-            describe: 'Enable online advisory lookups during scan'
+            describe: 'Deprecated: scan is offline-only; use "db update" to fetch advisories'
           })
           .option('offline', {
             type: 'boolean',
@@ -93,6 +98,11 @@ export async function runCli(rawArgs: string[], deps: CliDeps = defaultDeps): Pr
           .option('refresh-cache', {
             type: 'boolean',
             default: false
+          })
+          .option('update-db', {
+            type: 'boolean',
+            default: false,
+            describe: 'Run db update before offline scan (single-command workflow)'
           })
           .option('osv-url', {
             type: 'string',
@@ -139,6 +149,17 @@ export async function runCli(rawArgs: string[], deps: CliDeps = defaultDeps): Pr
 
           await deps.mkdir(outDir, { recursive: true });
 
+          if (Boolean(argv.updateDb)) {
+            const update = await deps.updateAdvisoryDb({
+              projectPath,
+              outDir,
+              refreshCache: Boolean(argv.refreshCache),
+              osvUrl: argv.osvUrl ? String(argv.osvUrl) : undefined,
+              enableNetworkFallbacks: settings.enableNetworkFallbacks
+            });
+            deps.stdout.write(buildDbUpdateSummary(update, useColor(deps.stdout)));
+          }
+
           const report = await deps.runScan({
             projectPath,
             outDir,
@@ -173,7 +194,12 @@ export async function runCli(rawArgs: string[], deps: CliDeps = defaultDeps): Pr
           const thresholdHit =
             argv.failOn !== 'none' &&
             report.findings.some((f) => deps.shouldFail(argv.failOn as FailOn, f.severity));
-          deps.stdout.write(buildCliSummary(displayReport, String(argv.failOn), thresholdHit, useColor(deps.stdout)));
+          const unknownHit =
+            Boolean(argv.failOnUnknown) &&
+            report.findings.some((f) => f.severity === 'unknown' || typeof f.unknownReason === 'string');
+          deps.stdout.write(
+            buildCliSummary(displayReport, String(argv.failOn), thresholdHit, unknownHit, useColor(deps.stdout))
+          );
           deps.stdout.write(buildFindingsList(displayReport, argv.listFindings as ListFindingsMode, useColor(deps.stdout)));
           if (argv.findingsJson) {
             const findingsJsonPath = path.resolve(String(argv.findingsJson));
@@ -182,7 +208,7 @@ export async function runCli(rawArgs: string[], deps: CliDeps = defaultDeps): Pr
             deps.stdout.write(`${findingsJsonPath}\n`);
           }
 
-          if (thresholdHit) {
+          if (thresholdHit || unknownHit) {
             exitCode = 1;
             return;
           }
@@ -288,11 +314,13 @@ function resolveScanSettings(input: {
         };
 
   let offline = preset.offline;
-  if (input.online) offline = false;
+  if (input.online) {
+    throw new Error('scan is offline-only. Run "bardscan db update <path>" first, then run "bardscan scan".');
+  }
   if (typeof input.offline === 'boolean') offline = input.offline;
 
-  if (input.privacy === 'strict' && !offline) {
-    throw new Error('privacy strict disallows online scanning. Remove --online or use --privacy standard.');
+  if (!offline) {
+    throw new Error('scan is offline-only. Remove online settings and refresh advisories via "bardscan db update".');
   }
   if ((input.telemetry ?? preset.telemetry) === 'on' && input.privacy === 'strict') {
     throw new Error('privacy strict disallows telemetry.');
@@ -310,6 +338,7 @@ function buildCliSummary(
   report: Awaited<ReturnType<typeof core.runScan>>,
   failOn: string,
   thresholdHit: boolean,
+  unknownHit: boolean,
   color: boolean
 ): string {
   const sev = report.summary.bySeverity;
@@ -323,7 +352,8 @@ function buildCliSummary(
     `severity: critical=${colorize(String(sev.critical), 'magenta', color)} high=${colorize(String(sev.high), 'red', color)} medium=${colorize(String(sev.medium), 'yellow', color)} low=${colorize(String(sev.low), 'green', color)} unknown=${colorize(String(sev.unknown), 'gray', color)}`,
     `confidence: high=${colorize(String(conf.high), 'green', color)} medium=${colorize(String(conf.medium), 'yellow', color)} low=${colorize(String(conf.low), 'red', color)} unknown=${colorize(String(conf.unknown), 'gray', color)}`,
     `fail-on: ${failOn}`,
-    `threshold hit: ${thresholdHit ? colorize('yes', 'red', color) : colorize('no', 'green', color)}`
+    `threshold hit: ${thresholdHit ? colorize('yes', 'red', color) : colorize('no', 'green', color)}`,
+    `unknown hit: ${unknownHit ? colorize('yes', 'red', color) : colorize('no', 'green', color)}`
   ];
   return `${lines.join('\n')}\n`;
 }
