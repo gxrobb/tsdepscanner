@@ -1,0 +1,127 @@
+name: Reusable Bardscan Guard
+
+on:
+  workflow_call:
+    inputs:
+      project_path:
+        description: Project path to scan.
+        required: false
+        type: string
+        default: .
+      out_dir:
+        description: Output directory for reports and artifacts.
+        required: false
+        type: string
+        default: .bardscan
+      fail_on:
+        description: Threshold severity for CI failure.
+        required: false
+        type: string
+        default: high
+      fail_on_unknown:
+        description: Fail when unresolved findings exist.
+        required: false
+        type: boolean
+        default: true
+      update_db:
+        description: Refresh advisory DB before scanning.
+        required: false
+        type: boolean
+        default: true
+      fallback_calls:
+        description: Allow network fallback calls during DB update.
+        required: false
+        type: boolean
+        default: true
+      list_findings:
+        description: Findings detail mode.
+        required: false
+        type: string
+        default: medium-up
+      privacy:
+        description: Privacy profile passed to bardscan.
+        required: false
+        type: string
+        default: strict
+      evidence:
+        description: Evidence collection mode.
+        required: false
+        type: string
+        default: none
+      upload_sarif:
+        description: Upload SARIF to GitHub Security tab.
+        required: false
+        type: boolean
+        default: true
+      upload_artifacts:
+        description: Upload bardscan output artifacts.
+        required: false
+        type: boolean
+        default: true
+      artifact_retention_days:
+        description: Artifact retention period in days.
+        required: false
+        type: number
+        default: 14
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  bardscan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: corepack pnpm install
+
+      - name: Build packages
+        run: corepack pnpm build
+
+      - name: Run portable bardscan runner
+        id: run_bardscan
+        run: ./scripts/bardscan-ci.sh
+        env:
+          PROJECT_PATH: ${{ inputs.project_path }}
+          OUT_DIR: ${{ inputs.out_dir }}
+          FAIL_ON: ${{ inputs.fail_on }}
+          FAIL_ON_UNKNOWN: ${{ inputs.fail_on_unknown }}
+          UPDATE_DB: ${{ inputs.update_db }}
+          FALLBACK_CALLS: ${{ inputs.fallback_calls }}
+          LIST_FINDINGS: ${{ inputs.list_findings }}
+          PRIVACY: ${{ inputs.privacy }}
+          EVIDENCE: ${{ inputs.evidence }}
+
+      - name: Upload SARIF report
+        if: always() && inputs.upload_sarif && hashFiles(format('{0}/report.sarif', inputs.out_dir)) != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ${{ inputs.out_dir }}/report.sarif
+          category: bardscan-reusable
+
+      - name: Upload bardscan artifacts
+        if: always() && inputs.upload_artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bardscan-${{ github.run_id }}
+          retention-days: ${{ inputs.artifact_retention_days }}
+          if-no-files-found: warn
+          path: |
+            ${{ inputs.out_dir }}/report.json
+            ${{ inputs.out_dir }}/report.md
+            ${{ inputs.out_dir }}/report.sarif
+            ${{ inputs.out_dir }}/findings.json
+            ${{ inputs.out_dir }}/findings-threshold.json
+            ${{ inputs.out_dir }}/ci-summary.json

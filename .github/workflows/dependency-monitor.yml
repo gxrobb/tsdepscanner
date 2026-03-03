@@ -1,0 +1,219 @@
+name: Dependency Monitor
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * *"
+
+permissions:
+  contents: read
+  issues: write
+  security-events: write
+
+concurrency:
+  group: dependency-monitor-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: corepack pnpm install
+
+      - name: Build packages
+        run: corepack pnpm build
+
+      - name: Update advisory cache
+        run: node ./packages/cli/dist/index.js db update . --out-dir ./.bardscan
+
+      - name: Generate JSON + Markdown reports
+        run: |
+          node ./packages/cli/dist/index.js scan . \
+            --format both \
+            --out-dir ./.bardscan \
+            --offline \
+            --fail-on none \
+            --list-findings medium-up \
+            --findings-json ./.bardscan/findings.json
+
+      - name: Evaluate threshold and generate SARIF
+        id: security_gate
+        run: |
+          set +e
+          node ./packages/cli/dist/index.js scan . \
+            --format sarif \
+            --out-dir ./.bardscan \
+            --offline \
+            --fail-on high \
+            --fail-on-unknown \
+            --list-findings medium-up \
+            --findings-json ./.bardscan/findings-threshold.json
+          scan_exit=$?
+          set -e
+
+          threshold_hit=false
+          if [ "$scan_exit" -eq 1 ]; then
+            threshold_hit=true
+          elif [ "$scan_exit" -eq 2 ]; then
+            exit 2
+          fi
+
+          findings_count=0
+          if [ -f ./.bardscan/findings-threshold.json ]; then
+            findings_count=$(node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync('./.bardscan/findings-threshold.json','utf8')); process.stdout.write(String(Array.isArray(data) ? data.length : 0));")
+          fi
+
+          dedup_key=$(node -e 'const fs=require("fs"); const crypto=require("crypto"); const repo=process.env.GITHUB_REPOSITORY || "unknown-repo"; const path="./.bardscan/findings-threshold.json"; let findings=[]; if (fs.existsSync(path)) { const parsed=JSON.parse(fs.readFileSync(path,"utf8")); findings=Array.isArray(parsed) ? parsed : []; } const tuples=findings.flatMap((finding)=>{ const pkg=String(finding.packageName || "unknown-package"); const version=String(finding.version || "unknown-version"); const ids=Array.isArray(finding.vulnerabilities) ? finding.vulnerabilities.map((v)=>String(v.id || "unknown-id")) : []; if (ids.length === 0) ids.push("unknown:" + String(finding.unknownReason || "none")); return ids.map((id)=>pkg + "@" + version + ":" + id); }).sort(); const hash=crypto.createHash("sha256").update(repo + "|" + tuples.join("|")).digest("hex").slice(0,16); process.stdout.write(hash);')
+
+          node -e "const fs=require('fs'); const outPath='./.bardscan/remediation-metrics.json'; const findingsPath='./.bardscan/findings-threshold.json'; let findings=[]; if (fs.existsSync(findingsPath)) { const parsed=JSON.parse(fs.readFileSync(findingsPath,'utf8')); findings=Array.isArray(parsed)?parsed:[]; } const bySeverity=findings.reduce((acc,finding)=>{ const key=finding?.severity || 'unknown'; acc[key]=(acc[key] || 0) + 1; return acc; }, {critical:0,high:0,medium:0,low:0,unknown:0}); const direct=findings.filter((finding)=>finding.direct === true).length; const transitive=findings.filter((finding)=>finding.direct !== true).length; const fixable=findings.filter((finding)=>Array.isArray(finding.vulnerabilities) && finding.vulnerabilities.some((v)=>typeof v.fixedVersion === 'string' && v.fixedVersion.length > 0)).length; const metrics={ generatedAt: new Date().toISOString(), repository: process.env.GITHUB_REPOSITORY, runId: process.env.GITHUB_RUN_ID, thresholdHit: process.argv[1] === 'true', findingsAtThreshold: findings.length, bySeverity, directDependencyFindings: direct, transitiveDependencyFindings: transitive, fixableFindings: fixable, dedupKey: process.argv[2] }; fs.writeFileSync(outPath, JSON.stringify(metrics, null, 2));" "$threshold_hit" "$dedup_key"
+
+          {
+            echo "threshold_hit=$threshold_hit"
+            echo "findings_count=$findings_count"
+            echo "dedup_key=$dedup_key"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload SARIF report
+        if: always() && hashFiles('./.bardscan/report.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ./.bardscan/report.sarif
+          category: bardscan
+
+      - name: Upload dependency monitor artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bardscan-reports-${{ github.run_id }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            ./.bardscan/report.json
+            ./.bardscan/report.md
+            ./.bardscan/report.sarif
+            ./.bardscan/findings.json
+            ./.bardscan/findings-threshold.json
+            ./.bardscan/remediation-metrics.json
+
+      - name: Create or update dependency alert issue
+        if: steps.security_gate.outputs.threshold_hit == 'true'
+        uses: actions/github-script@v7
+        env:
+          DEDUP_KEY: ${{ steps.security_gate.outputs.dedup_key }}
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- bardscan-threshold-issue -->';
+            const title = '[bardscan] Dependency security threshold breach';
+            const labels = ['dependency-security', 'bardscan-alert'];
+            const dedupKey = process.env.DEDUP_KEY || 'unknown';
+
+            const findingsPath = './.bardscan/findings-threshold.json';
+            let findings = [];
+            if (fs.existsSync(findingsPath)) {
+              const parsed = JSON.parse(fs.readFileSync(findingsPath, 'utf8'));
+              findings = Array.isArray(parsed) ? parsed : [];
+            }
+
+            const bySeverity = findings.reduce(
+              (acc, finding) => {
+                const key = finding?.severity ?? 'unknown';
+                acc[key] = (acc[key] ?? 0) + 1;
+                return acc;
+              },
+              { critical: 0, high: 0, medium: 0, low: 0, unknown: 0 }
+            );
+
+            const topFindings = findings
+              .slice(0, 20)
+              .map((finding) => {
+                const pkg = `${finding.packageName}@${finding.version}`;
+                const severity = finding.severity ?? 'unknown';
+                const ids = (finding.vulnerabilities ?? []).slice(0, 3).map((v) => v.id).join(', ') || 'n/a';
+                return `- \`${severity}\` \`${pkg}\` (${ids})`;
+              })
+              .join('\n');
+
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = `${marker}
+            <!-- bardscan-dedup-key:${dedupKey} -->
+            ## Dependency security threshold was exceeded
+
+            - Run: ${runUrl}
+            - Dedup key: \`${dedupKey}\`
+            - Findings at/above policy threshold: ${findings.length}
+            - Severity totals: critical=${bySeverity.critical}, high=${bySeverity.high}, medium=${bySeverity.medium}, low=${bySeverity.low}, unknown=${bySeverity.unknown}
+
+            ## Top findings
+            ${topFindings || '- No finding details were generated.'}
+
+            ## Next actions
+            - Review open dependency PRs from Dependabot.
+            - Merge safe patch/minor upgrades first.
+            - Escalate unresolved high/critical items.`;
+
+            async function ensureLabel(name, color, description) {
+              const { owner, repo } = context.repo;
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+                await github.rest.issues.createLabel({ owner, repo, name, color, description });
+              }
+            }
+
+            await ensureLabel('dependency-security', 'B60205', 'Dependency security tracking');
+            await ensureLabel('bardscan-alert', 'D93F0B', 'Automated bardscan alerts');
+
+            const { owner, repo } = context.repo;
+            const openIssues = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: 'open',
+              per_page: 100
+            });
+
+            const existing = openIssues.find(
+              (issue) => issue.title === title || (issue.body && issue.body.includes(marker))
+            );
+
+            if (existing) {
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: existing.number,
+                title,
+                body,
+                labels
+              });
+              core.info(`Updated issue #${existing.number}`);
+            } else {
+              const created = await github.rest.issues.create({
+                owner,
+                repo,
+                title,
+                body,
+                labels
+              });
+              core.info(`Created issue #${created.data.number}`);
+            }
+
+      - name: Enforce threshold
+        if: steps.security_gate.outputs.threshold_hit == 'true'
+        run: |
+          echo "Dependency monitor detected threshold breaches."
+          echo "Findings: ${{ steps.security_gate.outputs.findings_count }}"
+          exit 1

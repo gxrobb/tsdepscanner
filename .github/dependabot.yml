@@ -1,0 +1,73 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: daily
+      time: "04:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 20
+    labels:
+      - dependencies
+      - automated-pr
+    reviewers:
+      - solinarmac
+    groups:
+      non-major:
+        update-types:
+          - minor
+          - patch
+      major:
+        update-types:
+          - major
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+
+  - package-ecosystem: npm
+    directory: /packages/core
+    schedule:
+      interval: daily
+      time: "04:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 20
+    labels:
+      - dependencies
+      - automated-pr
+    reviewers:
+      - solinarmac
+    groups:
+      non-major:
+        update-types:
+          - minor
+          - patch
+      major:
+        update-types:
+          - major
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+
+  - package-ecosystem: npm
+    directory: /packages/cli
+    schedule:
+      interval: daily
+      time: "04:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 20
+    labels:
+      - dependencies
+      - automated-pr
+    reviewers:
+      - solinarmac
+    groups:
+      non-major:
+        update-types:
+          - minor
+          - patch
+      major:
+        update-types:
+          - major
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
