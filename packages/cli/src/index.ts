@@ -149,7 +149,7 @@ export async function runCli(rawArgs: string[], deps: CliDeps = defaultDeps): Pr
 
           await deps.mkdir(outDir, { recursive: true });
 
-          if (Boolean(argv.updateDb)) {
+          if (argv.updateDb) {
             const update = await deps.updateAdvisoryDb({
               projectPath,
               outDir,
