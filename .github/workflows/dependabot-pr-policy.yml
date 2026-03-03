@@ -1,0 +1,180 @@
+name: Dependabot PR Policy
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  security-events: write
+
+jobs:
+  policy:
+    if: github.actor == 'dependabot[bot]' && github.event.pull_request.head.repo.fork == false
+    runs-on: ubuntu-latest
+    outputs:
+      update_type: ${{ steps.metadata.outputs.update-type }}
+      dependency_names: ${{ steps.metadata.outputs.dependency-names }}
+      is_security_update: ${{ steps.classify.outputs.is_security_update }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: corepack pnpm install
+
+      - name: Build packages
+        run: corepack pnpm build
+
+      - name: Run tests
+        run: corepack pnpm test
+
+      - name: Run bardscan policy check
+        run: |
+          node ./packages/cli/dist/index.js scan . \
+            --update-db \
+            --format sarif \
+            --out-dir ./.bardscan \
+            --fail-on high \
+            --fail-on-unknown \
+            --list-findings medium-up \
+            --findings-json ./.bardscan/findings.json
+
+      - name: Upload SARIF report
+        if: always() && hashFiles('./.bardscan/report.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ./.bardscan/report.sarif
+          category: bardscan-pr-policy
+
+      - name: Read Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Classify update risk
+        id: classify
+        uses: actions/github-script@v7
+        env:
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          DEPENDENCY_NAMES: ${{ steps.metadata.outputs.dependency-names }}
+          ALERT_STATE: ${{ steps.metadata.outputs.alert-state }}
+        with:
+          script: |
+            const updateType = (process.env.UPDATE_TYPE || '').trim();
+            const dependencyNames = (process.env.DEPENDENCY_NAMES || '').trim();
+            const alertState = (process.env.ALERT_STATE || '').trim().toLowerCase();
+            const body = (context.payload.pull_request?.body || '').toLowerCase();
+            const title = (context.payload.pull_request?.title || '').toLowerCase();
+
+            const labelsToAdd = ['dependencies'];
+            const securitySignals = ['security', 'cve-', 'ghsa-', 'vulnerability'];
+            const isSecurityUpdate =
+              alertState === 'open' ||
+              securitySignals.some((signal) => title.includes(signal) || body.includes(signal));
+
+            if (isSecurityUpdate) {
+              labelsToAdd.push('security');
+            }
+
+            if (
+              updateType === 'version-update:semver-patch' ||
+              updateType === 'version-update:semver-minor'
+            ) {
+              labelsToAdd.push('safe-automerge');
+            } else {
+              labelsToAdd.push('manual-review');
+            }
+
+            async function ensureLabel(name, color, description) {
+              const { owner, repo } = context.repo;
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+                await github.rest.issues.createLabel({ owner, repo, name, color, description });
+              }
+            }
+
+            await ensureLabel('dependencies', '0366D6', 'Automated dependency updates');
+            await ensureLabel('security', 'B60205', 'Security-related dependency update');
+            await ensureLabel('safe-automerge', '0E8A16', 'Eligible for safe automerge');
+            await ensureLabel('manual-review', 'D93F0B', 'Requires manual review');
+
+            const issue_number = context.payload.pull_request.number;
+            const { owner, repo } = context.repo;
+
+            for (const label of ['safe-automerge', 'manual-review']) {
+              if (!labelsToAdd.includes(label)) {
+                try {
+                  await github.rest.issues.removeLabel({ owner, repo, issue_number, name: label });
+                } catch (error) {
+                  if (error.status !== 404) throw error;
+                }
+              }
+            }
+
+            await github.rest.issues.addLabels({
+              owner,
+              repo,
+              issue_number,
+              labels: labelsToAdd
+            });
+
+            core.setOutput('is_security_update', isSecurityUpdate ? 'true' : 'false');
+            core.info(`updateType=${updateType || 'unknown'} dependencies=${dependencyNames || 'n/a'}`);
+            core.info(`labels=${labelsToAdd.join(', ')}`);
+
+  enable-automerge:
+    if: |
+      github.actor == 'dependabot[bot]' &&
+      needs.policy.result == 'success' &&
+      (
+        needs.policy.outputs.update_type == 'version-update:semver-patch' ||
+        needs.policy.outputs.update_type == 'version-update:semver-minor'
+      )
+    runs-on: ubuntu-latest
+    needs:
+      - policy
+    steps:
+      - name: Enable auto-merge for safe updates
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pullRequestId = context.payload.pull_request.node_id;
+            try {
+              await github.graphql(
+                `mutation EnableAutoMerge($pullRequestId: ID!) {
+                  enablePullRequestAutoMerge(
+                    input: { pullRequestId: $pullRequestId, mergeMethod: SQUASH }
+                  ) {
+                    pullRequest {
+                      number
+                    }
+                  }
+                }`,
+                { pullRequestId }
+              );
+              core.info(`Auto-merge enabled for PR #${context.payload.pull_request.number}`);
+            } catch (error) {
+              core.warning(`Could not enable auto-merge automatically: ${error.message}`);
+            }

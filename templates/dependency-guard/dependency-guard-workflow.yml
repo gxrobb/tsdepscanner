@@ -1,0 +1,27 @@
+name: Dependency Guard
+
+on:
+  pull_request:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  dependency_guard:
+    uses: your-org/your-repo/.github/workflows/reusable-bardscan.yml@main
+    with:
+      project_path: .
+      out_dir: .bardscan
+      fail_on: high
+      fail_on_unknown: true
+      update_db: true
+      fallback_calls: true
+      list_findings: medium-up
+      privacy: strict
+      evidence: none
+      upload_sarif: true
+      upload_artifacts: true

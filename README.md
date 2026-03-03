@@ -44,6 +44,19 @@ pnpm dlx bardscan scan .
 bunx bardscan scan .
 ```
 
+## Automation Quickstart (GitHub)
+
+Use these files in this repository to bootstrap daily dependency security automation:
+
+1. Add Dependabot config from `templates/dependency-guard/dependabot.yml` to `.github/dependabot.yml`.
+2. Add reusable scanner workflow from `.github/workflows/reusable-bardscan.yml` (or reference this repo from a central workflows repo).
+3. Add caller workflow from `templates/dependency-guard/dependency-guard-workflow.yml` to `.github/workflows/dependency-guard.yml`.
+4. Add policy automation from `.github/workflows/dependabot-pr-policy.yml` for safe patch/minor auto-merge.
+5. Add scheduled monitoring from `.github/workflows/dependency-monitor.yml` for SARIF upload and issue notifications.
+
+Pipeline-agnostic templates for GitHub, GitLab, Jenkins, CircleCI, and Azure are documented in `docs/pipeline-templates.md`.
+Governance defaults (branch protection, alert dedupe, remediation metrics) are documented in `docs/dependency-governance.md`.
+
 ## CLI
 
 ### `bardscan scan [path]`
